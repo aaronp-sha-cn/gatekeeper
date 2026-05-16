@@ -276,7 +276,33 @@ class QoSManager:
         # tc命令执行历史（用于审计）
         self._tc_history: List[dict] = []
 
-        logger.info("QoS流量整形管理器初始化完成")
+        # 加载默认规则
+        self._load_default_rules()
+
+        logger.info("QoS流量整形管理器初始化完成，已加载 %d 条默认规则", len(self._rules))
+
+    def _load_default_rules(self):
+        """加载默认QoS规则"""
+        defaults = [
+            QoSRule(name="VoIP语音优先", match_type="port", match_value="5060,5061,10000-20000",
+                    priority=5, bandwidth_limit=10, burst_limit=15, action="prioritize"),
+            QoSRule(name="视频会议优先", match_type="port", match_value="80,443,3478,3479",
+                    priority=10, bandwidth_limit=50, burst_limit=80, action="prioritize"),
+            QoSRule(name="HTTP/HTTPS浏览", match_type="port", match_value="80,443",
+                    priority=30, bandwidth_limit=100, burst_limit=150, action="shape"),
+            QoSRule(name="DNS查询", match_type="port", match_value="53",
+                    priority=3, bandwidth_limit=5, burst_limit=10, action="prioritize"),
+            QoSRule(name="邮件服务", match_type="port", match_value="25,110,143,465,587,993,995",
+                    priority=40, bandwidth_limit=20, burst_limit=30, action="shape"),
+            QoSRule(name="SSH远程管理", match_type="port", match_value="22",
+                    priority=2, bandwidth_limit=10, burst_limit=15, action="prioritize"),
+            QoSRule(name="下载限速", match_type="port", match_value="21,22,873,6881-6999",
+                    priority=80, bandwidth_limit=30, burst_limit=50, action="shape"),
+            QoSRule(name="默认流量", match_type="protocol", match_value="all",
+                    priority=100, bandwidth_limit=0, burst_limit=0, action="shape"),
+        ]
+        for rule in defaults:
+            self.add_rule(rule)
 
     # ---- 规则管理 ----
 
