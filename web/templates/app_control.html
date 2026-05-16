@@ -24,6 +24,11 @@
                 <option value="">全部分类</option>
             </select>
         </div>
+        <div class="action-btns">
+            <input type="file" id="import-file" accept=".json" style="display:none" onchange="importApps()">
+            <button class="btn btn-success btn-sm" onclick="exportApps()"><i class="fas fa-download"></i> 导出</button>
+            <button class="btn btn-primary btn-sm" onclick="document.getElementById('import-file').click()"><i class="fas fa-upload"></i> 导入</button>
+        </div>
     </div>
     <table class="data-table">
         <thead>
@@ -161,6 +166,29 @@ function loadCategories() {
             });
         }
     }).catch(()=>{});
+}
+
+function exportApps() {
+    window.location.href = '/app-control/api/export';
+}
+
+function importApps() {
+    const fileInput = document.getElementById('import-file');
+    if (!fileInput.files.length) return;
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    fetch('/app-control/api/import', { method:'POST', body:formData })
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(data => {
+        if (data.status === 'ok') {
+            alert('导入完成: ' + data.data.blocked + ' 条阻断, ' + data.data.unblocked + ' 条解除');
+            loadApps();
+            loadBlocked();
+        } else {
+            alert('导入失败: ' + (data.message || '未知错误'));
+        }
+    }).catch(e => { alert('导入失败: ' + e.message); });
+    fileInput.value = '';
 }
 
 function loadApps() {

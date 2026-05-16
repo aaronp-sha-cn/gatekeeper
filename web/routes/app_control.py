@@ -3,7 +3,7 @@ GateKeeper - 应用识别与管控路由
 提供应用识别、流量检测、阻断策略和统计分析的API接口
 """
 
-from flask import Blueprint, jsonify, request, render_template
+from flask import Blueprint, jsonify, request, render_template, Response
 from flask_login import login_required
 
 from web.routes.auth import admin_required
@@ -12,6 +12,7 @@ from config.logging_config import get_logger
 from core.audit import log_web_action
 from security.app_detector import AppDetector
 from web.app import _safe_error_message
+import json
 
 logger = get_logger("app_control_routes")
 
@@ -214,4 +215,101 @@ def search_apps():
         })
     except Exception as e:
         logger.error("搜索应用失败: {}".format(e))
+        return jsonify(_safe_error_message(e)), 500
+
+
+@app_control_bp.route("/api/export", methods=["GET"])
+@login_required
+def export_apps():
+    """导出应用列表（含阻断状态）为JSON"""
+    try:
+        detector = _get_detector()
+        if detector is None:
+            return jsonify({"status": "error", "message": "引擎未初始化"}), 500
+
+        apps = detector.get_all_apps()
+        blocked_ids = set(detector.get_blocked_apps())
+
+        export_data = {
+            "version": "1.0",
+            "exported_at": __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "total": len(apps),
+            "apps": []
+        }
+        for app in apps:
+            item = dict(app) if isinstance(app, dict) else {
+                "id": getattr(app, "id", ""),
+                "name": getattr(app, "name", ""),
+                "category": getattr(app, "category", ""),
+                "risk": getattr(app, "risk", ""),
+                "protocols": getattr(app, "protocols", []),
+                "description": getattr(app, "description", ""),
+            }
+            item["blocked"] = item.get("id", "") in blocked_ids
+            export_data["apps"].append(item)
+
+        content = json.dumps(export_data, ensure_ascii=False, indent=2)
+        return Response(
+            content,
+            mimetype="application/json",
+            headers={"Content-Disposition": "attachment; filename=gatekeeper_apps_export.json"}
+        )
+    except Exception as e:
+        logger.error("导出应用列表失败: {}".format(e))
+        return jsonify(_safe_error_message(e)), 500
+
+
+@app_control_bp.route("/api/import", methods=["POST"])
+@admin_required
+def import_apps():
+    """导入应用列表（仅导入阻断状态）"""
+    try:
+        if "file" not in request.files:
+            return jsonify({"status": "error", "message": "未找到上传文件"}), 400
+
+        uploaded = request.files["file"]
+        if not uploaded.filename.endswith(".json"):
+            return jsonify({"status": "error", "message": "仅支持JSON文件"}), 400
+
+        data = json.loads(uploaded.read().decode("utf-8"))
+        apps = data.get("apps", [])
+        if not apps:
+            return jsonify({"status": "error", "message": "文件中没有应用数据"}), 400
+
+        detector = _get_detector()
+        if detector is None:
+            return jsonify({"status": "error", "message": "引擎未初始化"}), 500
+
+        blocked_count = 0
+        unblocked_count = 0
+        for item in apps:
+            app_id = item.get("id", "")
+            if not app_id:
+                continue
+            if item.get("blocked"):
+                detector.block_app(app_id)
+                blocked_count += 1
+            else:
+                detector.unblock_app(app_id)
+                unblocked_count += 1
+
+        log_web_action(
+            action="import_apps",
+            module="app_control",
+            detail="导入应用策略: {} 条阻断, {} 条解除".format(blocked_count, unblocked_count),
+        )
+
+        return jsonify({
+            "status": "ok",
+            "message": "导入完成",
+            "data": {
+                "total": len(apps),
+                "blocked": blocked_count,
+                "unblocked": unblocked_count,
+            }
+        })
+    except json.JSONDecodeError:
+        return jsonify({"status": "error", "message": "JSON格式错误"}), 400
+    except Exception as e:
+        logger.error("导入应用列表失败: {}".format(e))
         return jsonify(_safe_error_message(e)), 500
