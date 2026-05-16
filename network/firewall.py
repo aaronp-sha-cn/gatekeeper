@@ -65,12 +65,14 @@ class FirewallManager:
         self._lock = threading.Lock()
         self._backend = self._detect_backend()
         self._ip6tables_available = self._detect_ip6tables()
+        self._default_rules_initialized = False
 
         logger.info("防火墙管理器初始化完成，后端: {}, IPv6(ip6tables): {}".format(
             self._backend, "可用" if self._ip6tables_available else "不可用"
         ))
 
-        self._init_default_rules()
+        # 异步初始化默认规则，不阻塞 API 请求
+        threading.Thread(target=self._init_default_rules, daemon=True).start()
 
     def _init_default_rules(self):
         """
