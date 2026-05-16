@@ -339,7 +339,7 @@ class BridgeManager:
             try:
                 result = subprocess.run(
                     ["ip", "link", "show", "master", self._config.bridge_name],
-                    capture_output=True, text=True
+                    capture_output=True, text=True, timeout=10
                 )
                 for line in result.stdout.split('\n'):
                     if ':' in line:
@@ -356,13 +356,13 @@ class BridgeManager:
         try:
             result = subprocess.run(
                 ["cat", f"/sys/class/net/{self._config.bridge_name}/statistics/rx_packets"],
-                capture_output=True, text=True
+                capture_output=True, text=True, timeout=10
             )
             status["rx_packets"] = int(result.stdout.strip()) if result.returncode == 0 else 0
 
             result = subprocess.run(
                 ["cat", f"/sys/class/net/{self._config.bridge_name}/statistics/tx_packets"],
-                capture_output=True, text=True
+                capture_output=True, text=True, timeout=10
             )
             status["tx_packets"] = int(result.stdout.strip()) if result.returncode == 0 else 0
         except Exception as e:
@@ -380,7 +380,7 @@ class BridgeManager:
             # 从ARP表获取
             result = subprocess.run(
                 ["ip", "neigh", "show"],
-                capture_output=True, text=True
+                capture_output=True, text=True, timeout=10
             )
             
             for line in result.stdout.split('\n'):

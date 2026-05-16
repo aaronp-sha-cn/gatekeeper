@@ -144,8 +144,8 @@ MaxConnections 1024
 
         # 启动 c-icap
         try:
-            subprocess.run(["mkdir", "-p", "/var/log/c-icap"], check=True)
-            subprocess.run(["c-icap", "-f", self.icap_config], check=True, capture_output=True)
+            subprocess.run(["mkdir", "-p", "/var/log/c-icap"], check=True, capture_output=True, timeout=10)
+            subprocess.run(["c-icap", "-f", self.icap_config], check=True, capture_output=True, timeout=10)
             results["icap"] = "started"
         except Exception as e:
             results["icap"] = f"error: {e}"
@@ -153,7 +153,7 @@ MaxConnections 1024
         # 启动 Squid
         try:
             subprocess.run(["squid", "-z"], capture_output=True, timeout=30)  # 初始化缓存
-            subprocess.run(["squid", "-f", self.squid_config], check=True, capture_output=True)
+            subprocess.run(["squid", "-f", self.squid_config], check=True, capture_output=True, timeout=30)
             results["squid"] = "started"
         except Exception as e:
             results["squid"] = f"error: {e}"
@@ -165,13 +165,13 @@ MaxConnections 1024
         """停止服务"""
         results = {}
         try:
-            subprocess.run(["squid", "-k", "shutdown"], capture_output=True)
+            subprocess.run(["squid", "-k", "shutdown"], capture_output=True, timeout=30)
             results["squid"] = "stopped"
         except Exception as e:
             results["squid"] = f"error: {e}"
 
         try:
-            subprocess.run(["pkill", "c-icap"], capture_output=True)
+            subprocess.run(["pkill", "c-icap"], capture_output=True, timeout=10)
             results["icap"] = "stopped"
         except Exception as e:
             results["icap"] = f"error: {e}"
@@ -185,14 +185,14 @@ MaxConnections 1024
 
         # 检查 Squid
         try:
-            result = subprocess.run(["pgrep", "-x", "squid"], capture_output=True)
+            result = subprocess.run(["pgrep", "-x", "squid"], capture_output=True, timeout=10)
             status["squid_running"] = result.returncode == 0
         except Exception:
             status["squid_running"] = False
 
         # 检查 c-icap
         try:
-            result = subprocess.run(["pgrep", "-x", "c-icap"], capture_output=True)
+            result = subprocess.run(["pgrep", "-x", "c-icap"], capture_output=True, timeout=10)
             status["icap_running"] = result.returncode == 0
         except Exception:
             status["icap_running"] = False
@@ -266,14 +266,14 @@ SystemLog /var/log/proftpd/system.log
 
         # 启动 ClamAV daemon
         try:
-            subprocess.run(["clamd"], capture_output=True)
+            subprocess.run(["clamd"], capture_output=True, timeout=10)
             results["clamd"] = "started"
         except Exception as e:
             results["clamd"] = f"error: {e}"
 
         # 启动 ProFTPD
         try:
-            subprocess.run(["proftpd", "-c", self.proftpd_config], check=True, capture_output=True)
+            subprocess.run(["proftpd", "-c", self.proftpd_config], check=True, capture_output=True, timeout=10)
             results["proftpd"] = "started"
         except Exception as e:
             results["proftpd"] = f"error: {e}"
@@ -285,7 +285,7 @@ SystemLog /var/log/proftpd/system.log
         """停止服务"""
         results = {}
         try:
-            subprocess.run(["pkill", "proftpd"], capture_output=True)
+            subprocess.run(["pkill", "proftpd"], capture_output=True, timeout=10)
             results["proftpd"] = "stopped"
         except Exception as e:
             results["proftpd"] = f"error: {e}"
@@ -298,13 +298,13 @@ SystemLog /var/log/proftpd/system.log
         status = {"enabled": self.enabled}
 
         try:
-            result = subprocess.run(["pgrep", "-x", "proftpd"], capture_output=True)
+            result = subprocess.run(["pgrep", "-x", "proftpd"], capture_output=True, timeout=10)
             status["proftpd_running"] = result.returncode == 0
         except Exception:
             status["proftpd_running"] = False
 
         try:
-            result = subprocess.run(["pgrep", "-x", "clamd"], capture_output=True)
+            result = subprocess.run(["pgrep", "-x", "clamd"], capture_output=True, timeout=10)
             status["clamd_running"] = result.returncode == 0
         except Exception:
             status["clamd_running"] = False
@@ -404,21 +404,21 @@ $LOGFILE = '/var/log/amavis/amavis.log';
 
         # 启动 ClamAV daemon
         try:
-            subprocess.run(["clamd"], capture_output=True)
+            subprocess.run(["clamd"], capture_output=True, timeout=10)
             results["clamd"] = "started"
         except Exception as e:
             results["clamd"] = f"error: {e}"
 
         # 启动 amavisd-new
         try:
-            subprocess.run(["amavisd-new", "start"], capture_output=True)
+            subprocess.run(["amavisd-new", "start"], capture_output=True, timeout=10)
             results["amavis"] = "started"
         except Exception as e:
             results["amavis"] = f"error: {e}"
 
         # 启动 Postfix
         try:
-            subprocess.run(["postfix", "start"], capture_output=True)
+            subprocess.run(["postfix", "start"], capture_output=True, timeout=10)
             results["postfix"] = "started"
         except Exception as e:
             results["postfix"] = f"error: {e}"
@@ -430,13 +430,13 @@ $LOGFILE = '/var/log/amavis/amavis.log';
         """停止服务"""
         results = {}
         try:
-            subprocess.run(["postfix", "stop"], capture_output=True)
+            subprocess.run(["postfix", "stop"], capture_output=True, timeout=10)
             results["postfix"] = "stopped"
         except Exception as e:
             results["postfix"] = f"error: {e}"
 
         try:
-            subprocess.run(["amavisd-new", "stop"], capture_output=True)
+            subprocess.run(["amavisd-new", "stop"], capture_output=True, timeout=10)
             results["amavis"] = "stopped"
         except Exception as e:
             results["amavis"] = f"error: {e}"
@@ -449,13 +449,13 @@ $LOGFILE = '/var/log/amavis/amavis.log';
         status = {"enabled": self.enabled}
 
         try:
-            result = subprocess.run(["pgrep", "-x", "master"], capture_output=True)
+            result = subprocess.run(["pgrep", "-x", "master"], capture_output=True, timeout=10)
             status["postfix_running"] = result.returncode == 0
         except Exception:
             status["postfix_running"] = False
 
         try:
-            result = subprocess.run(["pgrep", "-f", "amavisd"], capture_output=True)
+            result = subprocess.run(["pgrep", "-f", "amavisd"], capture_output=True, timeout=10)
             status["amavis_running"] = result.returncode == 0
         except Exception:
             status["amavis_running"] = False
@@ -527,21 +527,21 @@ class SMBScanner(ProtocolScannerBase):
 
         # 启动 ClamAV daemon
         try:
-            subprocess.run(["clamd"], capture_output=True)
+            subprocess.run(["clamd"], capture_output=True, timeout=10)
             results["clamd"] = "started"
         except Exception as e:
             results["clamd"] = f"error: {e}"
 
         # 启动 smbd
         try:
-            subprocess.run(["smbd"], capture_output=True)
+            subprocess.run(["smbd"], capture_output=True, timeout=10)
             results["smbd"] = "started"
         except Exception as e:
             results["smbd"] = f"error: {e}"
 
         # 启动 nmbd
         try:
-            subprocess.run(["nmbd"], capture_output=True)
+            subprocess.run(["nmbd"], capture_output=True, timeout=10)
             results["nmbd"] = "started"
         except Exception as e:
             results["nmbd"] = f"error: {e}"
@@ -553,13 +553,13 @@ class SMBScanner(ProtocolScannerBase):
         """停止服务"""
         results = {}
         try:
-            subprocess.run(["pkill", "smbd"], capture_output=True)
+            subprocess.run(["pkill", "smbd"], capture_output=True, timeout=10)
             results["smbd"] = "stopped"
         except Exception as e:
             results["smbd"] = f"error: {e}"
 
         try:
-            subprocess.run(["pkill", "nmbd"], capture_output=True)
+            subprocess.run(["pkill", "nmbd"], capture_output=True, timeout=10)
             results["nmbd"] = "stopped"
         except Exception as e:
             results["nmbd"] = f"error: {e}"
@@ -572,13 +572,13 @@ class SMBScanner(ProtocolScannerBase):
         status = {"enabled": self.enabled}
 
         try:
-            result = subprocess.run(["pgrep", "-x", "smbd"], capture_output=True)
+            result = subprocess.run(["pgrep", "-x", "smbd"], capture_output=True, timeout=10)
             status["smbd_running"] = result.returncode == 0
         except Exception:
             status["smbd_running"] = False
 
         try:
-            result = subprocess.run(["pgrep", "-x", "nmbd"], capture_output=True)
+            result = subprocess.run(["pgrep", "-x", "nmbd"], capture_output=True, timeout=10)
             status["nmbd_running"] = result.returncode == 0
         except Exception:
             status["nmbd_running"] = False

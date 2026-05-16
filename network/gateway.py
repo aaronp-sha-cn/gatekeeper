@@ -287,11 +287,11 @@ class GatewayManager:
 
             # 删除静态IP
             subprocess.run(["ip", "addr", "flush", "dev", self._wan_config.interface],
-                          capture_output=True)
+                          capture_output=True, timeout=10)
 
             # 删除默认路由
             subprocess.run(["ip", "route", "del", "default"],
-                          capture_output=True)
+                          capture_output=True, timeout=10)
 
             self._wan_config.is_connected = False
             self._wan_config.current_ip = ""
@@ -310,7 +310,7 @@ class GatewayManager:
             iface = self._wan_config.interface
 
             # 确保接口UP
-            subprocess.run(["ip", "link", "set", iface, "up"], check=True, capture_output=True)
+            subprocess.run(["ip", "link", "set", iface, "up"], check=True, capture_output=True, timeout=10)
             time.sleep(2)
 
             # 释放旧租约
@@ -366,12 +366,12 @@ class GatewayManager:
                 return {"success": False, "message": "PPPoE用户名和密码不能为空"}
 
             # 检查pppd是否安装
-            result = subprocess.run(["which", "pppd"], capture_output=True)
+            result = subprocess.run(["which", "pppd"], capture_output=True, timeout=10)
             if result.returncode != 0:
                 return {"success": False, "message": "pppd未安装，请执行: apt install pppoeconf ppp"}
 
             # 确保物理接口UP
-            subprocess.run(["ip", "link", "set", iface, "up"], check=True, capture_output=True)
+            subprocess.run(["ip", "link", "set", iface, "up"], check=True, capture_output=True, timeout=10)
             time.sleep(2)
 
             # 生成PPPoE配置文件
@@ -445,23 +445,23 @@ class GatewayManager:
             cidr = self._netmask_to_cidr(netmask)
 
             # 清除旧IP
-            subprocess.run(["ip", "addr", "flush", "dev", iface], capture_output=True)
+            subprocess.run(["ip", "addr", "flush", "dev", iface], capture_output=True, timeout=10)
 
             # 配置IP地址
             subprocess.run([
                 "ip", "addr", "add", f"{ip}/{cidr}", "dev", iface
-            ], check=True, capture_output=True)
+            ], check=True, capture_output=True, timeout=10)
 
             # 启用接口
-            subprocess.run(["ip", "link", "set", iface, "up"], check=True, capture_output=True)
+            subprocess.run(["ip", "link", "set", iface, "up"], check=True, capture_output=True, timeout=10)
 
             # 删除旧默认路由
-            subprocess.run(["ip", "route", "del", "default"], capture_output=True)
+            subprocess.run(["ip", "route", "del", "default"], capture_output=True, timeout=10)
 
             # 添加默认路由
             subprocess.run([
                 "ip", "route", "add", "default", "via", gateway
-            ], check=True, capture_output=True)
+            ], check=True, capture_output=True, timeout=10)
 
             # 配置DNS
             if self._wan_config.static_dns:
@@ -553,9 +553,9 @@ nodeflate
                         # 自动重连
                         if self._wan_config.pppoe_auto_reconnect:
                             logger.info("尝试PPPoE自动重连...")
-                            subprocess.run(["poff", "gatekeeper-pppoe"], capture_output=True)
+                            subprocess.run(["poff", "gatekeeper-pppoe"], capture_output=True, timeout=10)
                             time.sleep(5)
-                            subprocess.run(["pon", "gatekeeper-pppoe"], capture_output=True)
+                            subprocess.run(["pon", "gatekeeper-pppoe"], capture_output=True, timeout=10)
 
             except Exception as e:
                 logger.debug(f"PPPoE监控异常: {e}")
@@ -680,7 +680,7 @@ nodeflate
         # 临时启用
         subprocess.run(
             ["sysctl", "-w", "net.ipv4.ip_forward=1"],
-            check=True, capture_output=True
+            check=True, capture_output=True, timeout=10
         )
 
         # 永久启用
@@ -694,7 +694,7 @@ nodeflate
         """禁用IP转发"""
         subprocess.run(
             ["sysctl", "-w", "net.ipv4.ip_forward=0"],
-            check=True, capture_output=True
+            check=True, capture_output=True, timeout=10
         )
         logger.info("IP转发已禁用")
 
@@ -710,11 +710,11 @@ nodeflate
         # 创建自定义链 GK_NAT
         subprocess.run(
             ["iptables", "-t", "nat", "-N", "GK_NAT"],
-            capture_output=True
+            capture_output=True, timeout=10
         )
         subprocess.run(
             ["iptables", "-t", "nat", "-N", "GK_DNAT"],
-            capture_output=True
+            capture_output=True, timeout=10
         )
 
         # 添加MASQUERADE规则到自定义链
@@ -724,43 +724,43 @@ nodeflate
             "-o", wan_interface,
             "-j", "MASQUERADE",
             "-m", "comment", "--comment", "GK_GW_NAT"
-        ], check=True, capture_output=True)
+        ], check=True, capture_output=True, timeout=10)
 
         # 将自定义链挂载到POSTROUTING
         subprocess.run([
             "iptables", "-t", "nat", "-I", "POSTROUTING", "1",
             "-j", "GK_NAT"
-        ], capture_output=True)
+        ], capture_output=True, timeout=10)
 
         # 将DNAT链挂载到PREROUTING
         subprocess.run([
             "iptables", "-t", "nat", "-I", "PREROUTING", "1",
             "-j", "GK_DNAT"
-        ], capture_output=True)
+        ], capture_output=True, timeout=10)
 
         # 允许转发流量（使用自定义链）
         subprocess.run(
             ["iptables", "-N", "GK_FWD"],
-            capture_output=True
+            capture_output=True, timeout=10
         )
         subprocess.run([
             "iptables", "-I", "FORWARD", "1",
             "-j", "GK_FWD"
-        ], capture_output=True)
+        ], capture_output=True, timeout=10)
 
         subprocess.run([
             "iptables", "-A", "GK_FWD",
             "-s", lan_network,
             "-j", "ACCEPT",
             "-m", "comment", "--comment", "GK_GW_FWD_OUT"
-        ], check=True, capture_output=True)
+        ], check=True, capture_output=True, timeout=10)
 
         subprocess.run([
             "iptables", "-A", "GK_FWD",
             "-d", lan_network,
             "-j", "ACCEPT",
             "-m", "comment", "--comment", "GK_GW_FWD_IN"
-        ], check=True, capture_output=True)
+        ], check=True, capture_output=True, timeout=10)
 
         # 默认允许已建立连接和相关连接
         subprocess.run([
@@ -768,7 +768,7 @@ nodeflate
             "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED",
             "-j", "ACCEPT",
             "-m", "comment", "--comment", "GK_FWD_CT"
-        ], check=True, capture_output=True)
+        ], check=True, capture_output=True, timeout=10)
 
         logger.info(f"NAT已配置(高级): {lan_network} -> {wan_interface}")
 
@@ -778,40 +778,40 @@ nodeflate
         for chain, table in [("GK_NAT", "nat"), ("GK_DNAT", "nat")]:
             subprocess.run(
                 ["iptables", "-t", table, "-D", "POSTROUTING", "-j", chain],
-                capture_output=True
+                capture_output=True, timeout=10
             )
             subprocess.run(
                 ["iptables", "-t", table, "-D", "PREROUTING", "-j", chain],
-                capture_output=True
+                capture_output=True, timeout=10
             )
             # 清空并删除自定义链
             subprocess.run(
                 ["iptables", "-t", table, "-F", chain],
-                capture_output=True
+                capture_output=True, timeout=10
             )
             subprocess.run(
                 ["iptables", "-t", table, "-X", chain],
-                capture_output=True
+                capture_output=True, timeout=10
             )
 
         # 清除FORWARD中的GK链
         subprocess.run(
             ["iptables", "-D", "FORWARD", "-j", "GK_FWD"],
-            capture_output=True
+            capture_output=True, timeout=10
         )
         subprocess.run(
             ["iptables", "-F", "GK_FWD"],
-            capture_output=True
+            capture_output=True, timeout=10
         )
         subprocess.run(
             ["iptables", "-X", "GK_FWD"],
-            capture_output=True
+            capture_output=True, timeout=10
         )
 
         # 清除旧版GK规则（兼容）
         result = subprocess.run(
             ["iptables", "-L", "FORWARD", "-n", "--line-numbers"],
-            capture_output=True, text=True
+            capture_output=True, text=True, timeout=10
         )
         for line in reversed(result.stdout.split('\n')):
             if "GK_GW" in line:
@@ -821,7 +821,7 @@ nodeflate
                         num = parts[0]
                         subprocess.run(
                             ["iptables", "-D", "FORWARD", num],
-                            capture_output=True
+                            capture_output=True, timeout=10
                         )
                     except (ValueError, IndexError):
                         pass
@@ -839,7 +839,7 @@ nodeflate
             # POSTROUTING规则
             result = subprocess.run(
                 ["iptables", "-t", "nat", "-L", "POSTROUTING", "-n", "-v", "--line-numbers"],
-                capture_output=True, text=True
+                capture_output=True, text=True, timeout=10
             )
             for line in result.stdout.split('\n'):
                 if "GK" in line or "MASQUERADE" in line or "SNAT" in line:
@@ -848,7 +848,7 @@ nodeflate
             # PREROUTING规则
             result = subprocess.run(
                 ["iptables", "-t", "nat", "-L", "PREROUTING", "-n", "-v", "--line-numbers"],
-                capture_output=True, text=True
+                capture_output=True, text=True, timeout=10
             )
             for line in result.stdout.split('\n'):
                 if "GK" in line or "DNAT" in line:
@@ -857,7 +857,7 @@ nodeflate
             # FORWARD规则
             result = subprocess.run(
                 ["iptables", "-L", "FORWARD", "-n", "-v", "--line-numbers"],
-                capture_output=True, text=True
+                capture_output=True, text=True, timeout=10
             )
             for line in result.stdout.split('\n'):
                 if "GK" in line:
@@ -907,7 +907,7 @@ nodeflate
             try:
                 result = subprocess.run(
                     ["iptables", "-L", "GK_FWD", "-n"],
-                    capture_output=True, text=True
+                    capture_output=True, text=True, timeout=10
                 )
                 if "SYNPROXY" in result.stdout:
                     syn_proxy = True
@@ -994,7 +994,7 @@ nodeflate
         """设置sysctl参数（临时+永久）"""
         subprocess.run(
             ["sysctl", "-w", f"{key}={value}"],
-            check=True, capture_output=True
+            check=True, capture_output=True, timeout=10
         )
         # 写入配置文件
         try:
@@ -1017,7 +1017,7 @@ nodeflate
             "-m", "conntrack", "--ctstate", "NEW",
             "-j", "SYNPROXY", "--sack-perm", "--timestamp", "--wscale", "6",
             "-m", "comment", "--comment", "GK_SYNPROXY"
-        ], capture_output=True)
+        ], capture_output=True, timeout=10)
 
         # 设置SYN接收队列
         self._set_sysctl("net.ipv4.tcp_syncookies", 1)
@@ -1027,7 +1027,7 @@ nodeflate
         """禁用SYN代理"""
         subprocess.run(
             ["iptables", "-D", "GK_FWD", "-m", "comment", "--comment", "GK_SYNPROXY", "-j", "SYNPROXY"],
-            capture_output=True
+            capture_output=True, timeout=10
         )
 
     def _enable_forward_log(self):
@@ -1037,13 +1037,13 @@ nodeflate
             "-j", "LOG", "--log-prefix", "GK_FWD_DROP: ",
             "--log-level", "4",
             "-m", "comment", "--comment", "GK_FWD_LOG"
-        ], capture_output=True)
+        ], capture_output=True, timeout=10)
 
     def _disable_forward_log(self):
         """禁用转发日志"""
         subprocess.run(
             ["iptables", "-D", "GK_FWD", "-m", "comment", "--comment", "GK_FWD_LOG", "-j", "LOG"],
-            capture_output=True
+            capture_output=True, timeout=10
         )
 
     def add_custom_nat_rule(self, chain: str, rule_spec: str, comment: str = "") -> Dict:
@@ -1069,7 +1069,7 @@ nodeflate
             if comment:
                 args.extend(["-m", "comment", "--comment", f"GK_CUSTOM:{comment}"])
 
-            result = subprocess.run(args, capture_output=True, text=True)
+            result = subprocess.run(args, capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
                 return {"success": True, "message": "规则已添加"}
             else:
@@ -1115,7 +1115,7 @@ nodeflate
                 "-j", "DNAT",
                 "--to-destination", f"{internal_ip}:{internal_port}",
                 "-m", "comment", "--comment", f"GK_DNAT_{name}"
-            ], check=True, capture_output=True)
+            ], check=True, capture_output=True, timeout=10)
 
             # 允许转发的规则
             subprocess.run([
@@ -1125,7 +1125,7 @@ nodeflate
                 "--dport", str(internal_port),
                 "-j", "ACCEPT",
                 "-m", "comment", "--comment", f"GK_DNAT_{name}"
-            ], check=True, capture_output=True)
+            ], check=True, capture_output=True, timeout=10)
 
             rule = NATRule(
                 name=name,
@@ -1155,13 +1155,13 @@ nodeflate
             subprocess.run([
                 "iptables", "-t", "nat", "-D", "PREROUTING",
                 "-m", "comment", "--comment", f"GK_DNAT_{name}"
-            ], capture_output=True)
+            ], capture_output=True, timeout=10)
 
             # 删除FORWARD规则
             subprocess.run([
                 "iptables", "-D", "FORWARD",
                 "-m", "comment", "--comment", f"GK_DNAT_{name}"
-            ], capture_output=True)
+            ], capture_output=True, timeout=10)
 
             del self._nat_rules[name]
             logger.info(f"端口转发已删除: {name}")
@@ -1179,11 +1179,11 @@ nodeflate
         """配置LAN接口IP地址"""
         subprocess.run([
             "ip", "addr", "add", f"{ip_address}/24", "dev", interface
-        ], capture_output=True)
+        ], capture_output=True, timeout=10)
 
         subprocess.run([
             "ip", "link", "set", interface, "up"
-        ], capture_output=True)
+        ], capture_output=True, timeout=10)
 
         logger.info(f"LAN接口已配置: {interface} -> {ip_address}/24")
 
@@ -1223,14 +1223,14 @@ log-dhcp
             f.write(config_content)
 
         # 重启dnsmasq
-        subprocess.run(["systemctl", "restart", "dnsmasq"], capture_output=True)
-        subprocess.run(["systemctl", "enable", "dnsmasq"], capture_output=True)
+        subprocess.run(["systemctl", "restart", "dnsmasq"], capture_output=True, timeout=10)
+        subprocess.run(["systemctl", "enable", "dnsmasq"], capture_output=True, timeout=10)
 
         logger.info("DHCP服务器已启动")
 
     def _stop_dhcp_server(self):
         """停止DHCP服务器"""
-        subprocess.run(["systemctl", "stop", "dnsmasq"], capture_output=True)
+        subprocess.run(["systemctl", "stop", "dnsmasq"], capture_output=True, timeout=10)
         if os.path.exists("/etc/dnsmasq.d/gatekeeper-dhcp.conf"):
             os.remove("/etc/dnsmasq.d/gatekeeper-dhcp.conf")
         logger.info("DHCP服务器已停止")
@@ -1514,21 +1514,21 @@ log-dhcp
             # 检查接口是否已存在
             result = subprocess.run(
                 ["ip", "link", "show", vlan_interface],
-                capture_output=True
+                capture_output=True, timeout=10
             )
-            
+
             if result.returncode != 0:
                 # 创建VLAN接口
                 subprocess.run([
                     "ip", "link", "add", "link", interface,
                     "name", vlan_interface,
                     "type", "vlan", "id", str(vlan_id)
-                ], check=True, capture_output=True)
-                
+                ], check=True, capture_output=True, timeout=10)
+
                 # 启用接口
                 subprocess.run([
                     "ip", "link", "set", vlan_interface, "up"
-                ], check=True, capture_output=True)
+                ], check=True, capture_output=True, timeout=10)
                 
                 logger.info(f"VLAN接口已创建: {vlan_interface}")
             else:
@@ -1542,7 +1542,7 @@ log-dhcp
         try:
             subprocess.run([
                 "ip", "link", "delete", vlan_interface
-            ], capture_output=True)
+            ], capture_output=True, timeout=10)
             
             logger.info(f"VLAN接口已删除: {vlan_interface}")
             
@@ -1603,8 +1603,8 @@ log-dhcp
                 f.write(config_content)
             
             # 重启dnsmasq
-            subprocess.run(["systemctl", "restart", "dnsmasq"], capture_output=True)
-            
+            subprocess.run(["systemctl", "restart", "dnsmasq"], capture_output=True, timeout=10)
+
             logger.info(f"dnsmasq配置已更新，共 {len(subnets)} 个子网")
             
         except Exception as e:
@@ -1627,7 +1627,7 @@ log-dhcp
         try:
             result = subprocess.run(
                 ["ip", "-br", "link", "show", "type", "vlan"],
-                capture_output=True, text=True
+                capture_output=True, text=True, timeout=10
             )
             
             for line in result.stdout.strip().split('\n'):
@@ -1757,7 +1757,7 @@ no-resolv
         with open(config_path, "w") as f:
             f.write(config_content)
 
-        subprocess.run(["systemctl", "restart", "dnsmasq"], capture_output=True)
+        subprocess.run(["systemctl", "restart", "dnsmasq"], capture_output=True, timeout=10)
         logger.info("DNS转发已启动")
 
     def _stop_dns_forwarder(self):
@@ -1807,7 +1807,7 @@ no-resolv
         try:
             result = subprocess.run(
                 ["sysctl", "-n", "net.ipv4.ip_forward"],
-                capture_output=True, text=True
+                capture_output=True, text=True, timeout=10
             )
             status["ip_forward"] = result.stdout.strip() == "1"
         except:
@@ -1821,7 +1821,7 @@ no-resolv
         try:
             result = subprocess.run(
                 ["ip", "-br", "addr", "show"],
-                capture_output=True, text=True
+                capture_output=True, text=True, timeout=10
             )
 
             for line in result.stdout.strip().split('\n'):

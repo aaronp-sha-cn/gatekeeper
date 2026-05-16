@@ -2441,15 +2441,15 @@ class IDSEngine:
                 '-s', src_ip,
                 '-j', 'DROP',
                 '-m', 'comment', '--comment', f'GK_IDS_BLOCK:{reason}'
-            ], check=True, capture_output=True)
-            
+            ], check=True, capture_output=True, timeout=10)
+
             # 添加到FORWARD链（如果是网关）
             subprocess.run([
                 'iptables', '-I', 'FORWARD', '1',
                 '-s', src_ip,
                 '-j', 'DROP',
                 '-m', 'comment', '--comment', f'GK_IDS_BLOCK:{reason}'
-            ], check=False, capture_output=True)
+            ], check=False, capture_output=True, timeout=10)
             
             # 记录阻断
             unblock_time = datetime.now() + timedelta(seconds=self.block_duration)
@@ -2493,15 +2493,15 @@ class IDSEngine:
                 '-s', src_ip,
                 '-j', 'DROP',
                 '-m', 'comment', '--comment', 'GK_IDS_BLOCK:'
-            ], check=False, capture_output=True)
-            
+            ], check=False, capture_output=True, timeout=10)
+
             # 从iptables移除FORWARD链规则
             subprocess.run([
                 'iptables', '-D', 'FORWARD',
                 '-s', src_ip,
                 '-j', 'DROP',
                 '-m', 'comment', '--comment', 'GK_IDS_BLOCK:'
-            ], check=False, capture_output=True)
+            ], check=False, capture_output=True, timeout=10)
             
             # 从列表移除
             if src_ip in self.blocked_ips:
