@@ -77,20 +77,23 @@ const _UPTIME_CACHE_KEY = 'gatekeeper_boot_time';
 
 // 从后端获取系统启动时间，缓存到 localStorage 避免页面切换时重置
 function fetchSystemBootTime() {
-    // 优先使用 localStorage 缓存（跨页面导航持久化）
+    // 先同步读取缓存，确保第一次 updateClock 就有值
     const cached = localStorage.getItem(_UPTIME_CACHE_KEY);
     if (cached) {
         _systemStartTime = parseInt(cached, 10);
-        if (_systemStartTime && _systemStartTime > 0) return;
     }
-    // 无缓存，从后端获取
+    // 异步从后端获取最新值（每次页面加载都验证，防止系统重启后缓存过期）
     fetch('/api/system-monitor')
         .then(r => r.json())
         .then(data => {
             if (data.status === 'ok' && data.data && data.data.boot_time) {
-                _systemStartTime = data.data.boot_time * 1000; // 秒→毫秒
-                localStorage.setItem(_UPTIME_CACHE_KEY, String(_systemStartTime));
-            } else {
+                const serverBootMs = data.data.boot_time * 1000;
+                // 如果缓存值与服务器不一致（系统重启过），更新缓存
+                if (!cached || Math.abs(parseInt(cached, 10) - serverBootMs) > 5000) {
+                    _systemStartTime = serverBootMs;
+                    localStorage.setItem(_UPTIME_CACHE_KEY, String(_systemStartTime));
+                }
+            } else if (!_systemStartTime) {
                 _systemStartTime = Date.now();
                 localStorage.setItem(_UPTIME_CACHE_KEY, String(_systemStartTime));
             }
