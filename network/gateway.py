@@ -1783,7 +1783,7 @@ no-resolv
                 "enabled": self._config.dhcp_enabled,
                 "range": f"{self._config.dhcp_start} - {self._config.dhcp_end}",
                 "lease_time": self._config.dhcp_lease_time,
-                "active_leases": len(self.get_dhcp_leases())
+                "active_leases": 0,
             },
             "dns": {
                 "enabled": self._config.dns_enabled,
@@ -1802,6 +1802,12 @@ no-resolv
                 if rule.nat_type == NATType.DNAT
             ]
         }
+
+        # 安全获取DHCP租约数
+        try:
+            status["dhcp"]["active_leases"] = len(self.get_dhcp_leases())
+        except Exception:
+            pass
 
         # 检查IP转发状态
         try:
