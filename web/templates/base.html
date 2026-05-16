@@ -120,6 +120,7 @@
                     <li data-module="none"><a href="/audit/" class="{% if request.endpoint == 'audit.index' %}active{% endif %}">审计日志</a></li>
                     <li data-module="ha"><a href="/ha/" class="{% if request.endpoint == 'ha.index' %}active{% endif %}">高可用</a></li>
                     <li data-module="auth_ldap"><a href="/ldap/" class="{% if request.endpoint == 'auth_ldap.index' %}active{% endif %}">LDAP集成</a></li>
+                    <li data-module="none"><a href="/system/backup/" class="{% if request.endpoint == 'backup.index' %}active{% endif %}">系统备份</a></li>
                     <li data-module="none"><a href="/settings/" class="{% if request.endpoint == 'settings.index' %}active{% endif %}">系统设置</a></li>
                 </div>
             </div>
@@ -414,7 +415,7 @@
             '/threat-intel/': 'threat_intel',
             '/alerts/': 'alerts', '/reports/': 'reports',
             '/audit/': 'audit', '/ha/': 'ha', '/ldap/': 'auth_ldap',
-            '/settings/': 'settings',
+            '/system/backup/': 'backup', '/settings/': 'settings',
         };
         var mod = pathMap[href.replace(/\/$/, '')] || '';
         sendAudit(JSON.stringify({
