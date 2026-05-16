@@ -501,6 +501,20 @@
                 // 更新浏览器 URL
                 history.pushState({}, '', href);
 
+                // 滚动侧边栏使活动菜单项可见
+                var navMenu = document.querySelector('.nav-menu');
+                var activeLink = navMenu ? navMenu.querySelector('a.active') : null;
+                if (activeLink && navMenu) {
+                    var linkRect = activeLink.getBoundingClientRect();
+                    var menuRect = navMenu.getBoundingClientRect();
+                    if (linkRect.top < menuRect.top || linkRect.bottom > menuRect.bottom) {
+                        activeLink.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                    }
+                }
+
+                // 滚动页面到顶部
+                window.scrollTo(0, 0);
+
                 // 执行新页面中的 script 标签
                 var scripts = doc.querySelectorAll('.page-content script');
                 scripts.forEach(function(script) {

@@ -121,7 +121,8 @@ class DynamicRoutingManager:
         self._check_frr_available()
 
     def _check_frr_available(self) -> bool:
-        """检查FRR是否可用"""
+        """检查FRR是否可用，未安装则自动安装"""
+        import shutil
         try:
             result = subprocess.run(
                 ["vtysh", "-c", "show version"],
@@ -133,6 +134,28 @@ class DynamicRoutingManager:
             if self._frr_enabled:
                 logger.info("FRRouting检测成功")
             return self._frr_enabled
+        except FileNotFoundError:
+            logger.info("FRRouting 未安装，正在自动安装...")
+            try:
+                subprocess.run(
+                    ["apt-get", "install", "-y",
+                     "-o", "DPkg::Options::=--force-confdef",
+                     "-o", "DPkg::Options::=--force-confold",
+                     "frr", "frr-pythontools"],
+                    capture_output=True, timeout=120,
+                )
+                result = subprocess.run(
+                    ["vtysh", "-c", "show version"],
+                    capture_output=True, timeout=5, text=True,
+                )
+                if result.returncode == 0:
+                    self._frr_enabled = True
+                    logger.info("FRRouting 安装成功")
+                    return True
+            except Exception as e:
+                logger.warning("自动安装 FRRouting 失败: %s", e)
+            self._frr_enabled = False
+            return False
         except Exception as e:
             self._frr_enabled = False
             logger.debug("FRRouting不可用: {}".format(e))

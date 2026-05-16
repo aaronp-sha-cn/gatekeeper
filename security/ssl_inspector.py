@@ -306,16 +306,11 @@ addons = [SSLInspectAddon()]
                 if self._mitmproxy_process is not None:
                     return {"status": "error", "message": "SSL解密代理已在运行"}
 
-                # 检查 mitmproxy 是否可用
-                try:
-                    subprocess.run(
-                        ["mitmdump", "--version"],
-                        capture_output=True, text=True, timeout=5,
-                    )
-                except FileNotFoundError:
+                # 检查 mitmproxy 是否可用（会自动安装）
+                if not self._check_mitmproxy():
                     return {
                         "status": "error",
-                        "message": "mitmproxy 未安装，请执行: apt-get install mitmproxy && pip install mitmproxy",
+                        "message": "mitmproxy 安装失败，请手动执行: apt-get install mitmproxy",
                     }
 
                 # 检查 CA 证书
@@ -438,13 +433,34 @@ addons = [SSLInspectAddon()]
             }
 
     def _check_mitmproxy(self) -> bool:
-        """检查 mitmproxy 是否可用"""
+        """检查 mitmproxy 是否可用，未安装则自动安装"""
         try:
             result = subprocess.run(
                 ["mitmdump", "--version"],
                 capture_output=True, text=True, timeout=5,
             )
             return result.returncode == 0
+        except FileNotFoundError:
+            logger.info("mitmproxy 未安装，正在自动安装...")
+            try:
+                subprocess.run(
+                    ["apt-get", "install", "-y",
+                     "-o", "DPkg::Options::=--force-confdef",
+                     "-o", "DPkg::Options::=--force-confold",
+                     "mitmproxy"],
+                    capture_output=True, timeout=120,
+                )
+                # 验证安装
+                result = subprocess.run(
+                    ["mitmdump", "--version"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                if result.returncode == 0:
+                    logger.info("mitmproxy 安装成功")
+                    return True
+            except Exception as e:
+                logger.warning("自动安装 mitmproxy 失败: %s", e)
+            return False
         except Exception:
             return False
 
