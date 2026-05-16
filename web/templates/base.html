@@ -439,24 +439,17 @@
 
         // 记住每个页面的滚动位置
         var scrollPositions = {};
-        var navScrollPositions = {};
+        var lastNavScrollTop = 0;
 
         function saveScroll() {
             scrollPositions[window.location.pathname] = window.scrollY;
             var navMenu = document.querySelector('.nav-menu');
-            if (navMenu) navScrollPositions[window.location.pathname] = navMenu.scrollTop;
+            if (navMenu) lastNavScrollTop = navMenu.scrollTop;
         }
 
         function restoreScroll(path) {
             var y = scrollPositions[path] || 0;
             window.scrollTo(0, y);
-        }
-
-        function restoreNavScroll(path) {
-            var navMenu = document.querySelector('.nav-menu');
-            if (navMenu && navScrollPositions[path] !== undefined) {
-                navMenu.scrollTop = navScrollPositions[path];
-            }
         }
 
         // 拦截导航链接点击
@@ -516,7 +509,8 @@
                 history.pushState({}, '', href);
 
                 // 恢复侧边栏滚动位置
-                restoreNavScroll(href);
+                var navMenu = document.querySelector('.nav-menu');
+                if (navMenu) navMenu.scrollTop = lastNavScrollTop;
 
                 // 滚动页面到顶部
                 window.scrollTo(0, 0);
