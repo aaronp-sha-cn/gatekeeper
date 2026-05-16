@@ -438,14 +438,24 @@
 
         // 记住每个页面的滚动位置
         var scrollPositions = {};
+        var navScrollPositions = {};
 
         function saveScroll() {
             scrollPositions[window.location.pathname] = window.scrollY;
+            var navMenu = document.querySelector('.nav-menu');
+            if (navMenu) navScrollPositions[window.location.pathname] = navMenu.scrollTop;
         }
 
         function restoreScroll(path) {
             var y = scrollPositions[path] || 0;
             window.scrollTo(0, y);
+        }
+
+        function restoreNavScroll(path) {
+            var navMenu = document.querySelector('.nav-menu');
+            if (navMenu && navScrollPositions[path] !== undefined) {
+                navMenu.scrollTop = navScrollPositions[path];
+            }
         }
 
         // 拦截导航链接点击
@@ -501,16 +511,8 @@
                 // 更新浏览器 URL
                 history.pushState({}, '', href);
 
-                // 滚动侧边栏使活动菜单项可见
-                var navMenu = document.querySelector('.nav-menu');
-                var activeLink = navMenu ? navMenu.querySelector('a.active') : null;
-                if (activeLink && navMenu) {
-                    var linkRect = activeLink.getBoundingClientRect();
-                    var menuRect = navMenu.getBoundingClientRect();
-                    if (linkRect.top < menuRect.top || linkRect.bottom > menuRect.bottom) {
-                        activeLink.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-                    }
-                }
+                // 恢复侧边栏滚动位置
+                restoreNavScroll(href);
 
                 // 滚动页面到顶部
                 window.scrollTo(0, 0);
