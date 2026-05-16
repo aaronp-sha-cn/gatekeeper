@@ -508,12 +508,14 @@
                 // 更新浏览器 URL
                 history.pushState({}, '', href);
 
-                // 恢复侧边栏滚动位置
-                var navMenu = document.querySelector('.nav-menu');
-                if (navMenu) navMenu.scrollTop = lastNavScrollTop;
-
                 // 滚动页面到顶部
                 window.scrollTo(0, 0);
+
+                // 恢复侧边栏滚动位置（延迟到布局完成后）
+                requestAnimationFrame(function() {
+                    var navMenu = document.querySelector('.nav-menu');
+                    if (navMenu) navMenu.scrollTop = lastNavScrollTop;
+                });
 
                 // 执行新页面中的 script 标签
                 var scripts = doc.querySelectorAll('.page-content script');
