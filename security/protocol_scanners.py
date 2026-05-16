@@ -160,7 +160,11 @@ MaxConnections 1024
 
         # 确保依赖已安装
         self._ensure_packages(["squid"])
-        self._ensure_packages(["c-icap libc-icap-mod-clamav"])
+        self._ensure_packages(["c-icap", "libc-icap-mod-clamav"])
+
+        # 生成配置文件
+        self.configure()       # 生成 Squid 配置
+        self.configure_icap()  # 生成 c-icap 配置
 
         # 启动 c-icap
         try:
@@ -285,7 +289,7 @@ SystemLog /var/log/proftpd/system.log
         results = {}
 
         # 确保依赖已安装
-        self._ensure_packages(["clamav clamav-daemon"])
+        self._ensure_packages(["clamav", "clamav-daemon"])
         self._ensure_packages(["proftpd-basic"])
 
         # 启动 ClamAV daemon
@@ -427,7 +431,7 @@ $LOGFILE = '/var/log/amavis/amavis.log';
         results = {}
 
         # 确保依赖已安装
-        self._ensure_packages(["clamav clamav-daemon"])
+        self._ensure_packages(["clamav", "clamav-daemon"])
         self._ensure_packages(["amavisd-new"])
         self._ensure_packages(["postfix"])
 
@@ -505,8 +509,6 @@ class SMBScanner(ProtocolScannerBase):
     def configure(self, workgroup: str = "WORKGROUP", share_name: str = "shared",
                   share_path: str = "/srv/samba/shared") -> dict:
         """配置 Samba"""
-        os.makedirs(share_path, exist_ok=True)
-
         config = f"""
 [global]
    workgroup = {workgroup}
@@ -541,6 +543,7 @@ class SMBScanner(ProtocolScannerBase):
    clamav:scan on close = yes
 """
         try:
+            os.makedirs(share_path, exist_ok=True)
             os.makedirs(os.path.dirname(self.smb_config), exist_ok=True)
             with open(self.smb_config, "w") as f:
                 f.write(config)
@@ -555,7 +558,7 @@ class SMBScanner(ProtocolScannerBase):
         results = {}
 
         # 确保依赖已安装
-        self._ensure_packages(["clamav clamav-daemon"])
+        self._ensure_packages(["clamav", "clamav-daemon"])
         self._ensure_packages(["samba"])
 
         # 启动 ClamAV daemon

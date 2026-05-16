@@ -35,7 +35,7 @@ def get_rules():
         return jsonify({
             "status": "ok",
             "data": {
-                "rules": rules,
+                "rules": [rule.to_dict() for rule in rules],
                 "total": len(rules),
             }
         })
