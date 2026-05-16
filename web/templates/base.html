@@ -104,7 +104,7 @@
                     <li data-module="ntconfig"><a href="/ntconfig/" class="{% if request.endpoint == 'ntconfig.index' %}active{% endif %}">基线检查</a></li>
                     <li data-module="none"><a href="/assets/" class="{% if request.endpoint == 'assets.index' %}active{% endif %}">资产管理</a></li>
                     <li data-module="rule_update"><a href="/rule-update/" class="{% if request.endpoint == 'rule_update.index' %}active{% endif %}">规则更新</a></li>
-                    <li data-module="none"><a href="/threat-intel/" class="{% if request.endpoint == 'threat_intel.index' %}active{% endif %}">威胁情报</a></li>
+                    <li data-module="none"><a href="#" onclick="showToast('威胁情报模块开发中', 'info'); return false;">威胁情报</a></li>
                 </div>
             </div>
 
@@ -350,40 +350,7 @@
         }
     });
 
-    // ===== 时钟和运行时间 =====
-    (function() {
-        var startTime = Date.now();
-        var timeEl = document.getElementById('current-time');
-        var statusEl = document.getElementById('system-status');
-
-        function pad(n) { return n < 10 ? '0' + n : '' + n; }
-
-        function updateClock() {
-            if (!timeEl) return;
-            var now = new Date();
-            timeEl.textContent = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) + ' ' +
-                pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
-        }
-
-        function updateUptime() {
-            if (!statusEl) return;
-            var elapsed = Math.floor((Date.now() - startTime) / 1000);
-            var days = Math.floor(elapsed / 86400);
-            var hours = Math.floor((elapsed % 86400) / 3600);
-            var mins = Math.floor((elapsed % 3600) / 60);
-            var secs = elapsed % 60;
-            var text = '系统运行中 ';
-            if (days > 0) text += days + '天';
-            if (days > 0 || hours > 0) text += hours + '小时';
-            text += mins + '分' + secs + '秒';
-            statusEl.textContent = text;
-        }
-
-        updateClock();
-        updateUptime();
-        setInterval(updateClock, 1000);
-        setInterval(updateUptime, 1000);
-    })();
+    // 时钟和运行时间由 main.js 中的 updateClock() 统一处理
 
     // ===== 操作审计日志记录 =====
     function sendAudit(payload) {
@@ -516,6 +483,9 @@
                     // 执行完后移除（避免重复）
                     if (!script.src) document.body.removeChild(newScript);
                 });
+
+                // PJAX 兼容：手动触发自定义事件，通知页面初始化代码执行
+                document.dispatchEvent(new CustomEvent('pjax:contentloaded'));
 
                 pageContentEl.style.opacity = '1';
                 restoreScroll(href);

@@ -31,6 +31,12 @@
     </div>
 </div>
 
+<div style="margin-bottom: 20px;">
+    <button class="btn btn-primary" onclick="updateRules('dns')">
+        <i class="fas fa-download"></i> 更新黑名单
+    </button>
+</div>
+
 <!-- 规则管理 -->
 <div class="section">
     <h2>DNS过滤规则管理</h2>
@@ -1106,6 +1112,18 @@
     loadStats();
     loadRules();
     loadLogs(0);
+
+    function updateRules(module) {
+        if (!confirm('确定要从远程源更新' + (module === 'ids' ? 'IDS签名库' : module === 'waf' ? 'WAF规则库' : 'DNS黑名单') + '？')) return;
+        showToast('正在更新...', 'info');
+        fetch('/rule-update/api/update/' + module, { method: 'POST', headers: {'Content-Type': 'application/json'} })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'ok') showToast('更新成功', 'success');
+                else showToast(data.message || '更新失败', 'error');
+            })
+            .catch(e => showToast('更新失败: ' + e.message, 'error'));
+    }
 
     // 定时刷新
     setInterval(loadStats, 30000);

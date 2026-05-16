@@ -39,7 +39,7 @@ class ThreatIntelligenceManager:
         self._sources = {
             "local_database": {"enabled": True, "priority": 1},
             "abuse_ch": {"enabled": True, "priority": 2, "url": "https://feodotracker.abuse.ch/downloads/ipblocklist.csv"},
-            "alienvault_otx": {"enabled": True, "priority": 3, "url": "https://otx.alienvault.com/api/v1/"},
+            "alienvault_otx": {"enabled": False, "priority": 3, "url": "https://otx.alienvault.com/api/v1/"},
             "spamhaus_drop": {"enabled": True, "priority": 2, "url": "https://www.spamhaus.org/drop/drop.txt"},
             "misp": {"enabled": False, "priority": 1, "url": "", "api_key": "", "verify_ssl": True},
         }

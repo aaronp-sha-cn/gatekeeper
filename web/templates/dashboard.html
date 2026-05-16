@@ -203,7 +203,7 @@ function escapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
-document.addEventListener('DOMContentLoaded', function() {
+function initPage() {
     loadSystemMonitor();
     loadDashboardStats();
     loadTrafficChart();
@@ -219,7 +219,13 @@ document.addEventListener('DOMContentLoaded', function() {
     setInterval(loadThreatChart, 30000);     // 威胁分布每30秒刷新
     setInterval(loadRecentAlerts, 15000);    // 最近告警每15秒刷新
     setInterval(loadIpGeoData, 60000);       // IP地理数据每60秒刷新
-});
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initPage);
+} else {
+    initPage();
+}
+document.addEventListener('pjax:contentloaded', initPage);
 
 // ===== 统一安全Fetch（防止HTML响应导致JSON解析失败） =====
 function safeFetch(url) {

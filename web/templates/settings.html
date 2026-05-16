@@ -281,13 +281,19 @@ function escapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
-document.addEventListener('DOMContentLoaded', function() {
+function initPage() {
     loadSystemInfo();
     loadUsers();
     checkSuperAdmin();
     loadAIProviders();
     load2FAStatus();
-});
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initPage);
+} else {
+    initPage();
+}
+document.addEventListener('pjax:contentloaded', initPage);
 
 function loadSystemInfo() {
     fetch('/settings/api/system/info')

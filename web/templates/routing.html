@@ -473,12 +473,18 @@
     let bgpNetworks = [];
 
     // 初始化
-    document.addEventListener('DOMContentLoaded', function() {
+    function initPage() {
         refreshStatus();
         loadOSPFNeighbors();
         loadBGPNeighbors();
         loadRoutes();
-    });
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initPage);
+    } else {
+        initPage();
+    }
+    document.addEventListener('pjax:contentloaded', initPage);
 
     // 刷新状态
     function refreshStatus() {

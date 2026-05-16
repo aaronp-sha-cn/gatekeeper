@@ -238,6 +238,7 @@ body {
     font-size: 13px;
     color: var(--success);
     white-space: nowrap;
+    min-width: 180px;
 }
 
 .system-status::before {
@@ -258,6 +259,8 @@ body {
     font-size: 13px;
     color: var(--text-muted);
     white-space: nowrap;
+    min-width: 200px;
+    text-align: right;
 }
 
 .page-content {

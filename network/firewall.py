@@ -70,6 +70,149 @@ class FirewallManager:
             self._backend, "可用" if self._ip6tables_available else "不可用"
         ))
 
+        self._init_default_rules()
+
+    def _init_default_rules(self):
+        """
+        初始化默认安全规则
+
+        在首次初始化时添加一组基础防火墙规则，包括：
+        - 允许 loopback 接口
+        - 允许已建立/关联连接
+        - 允许 SSH、DNS、Web 管理界面、ICMP、DHCP
+        - 丢弃无效包
+        - 记录被丢弃的包
+        - 设置 INPUT/FORWARD 链默认策略为 DROP
+        """
+        logger.info("开始初始化默认防火墙规则...")
+
+        # 检查 INPUT 链是否已有规则，如果有则跳过初始化（避免重复添加）
+        try:
+            check_result = subprocess.run(
+                ["iptables", "-L", "INPUT", "-n"],
+                capture_output=True, text=True, timeout=5
+            )
+            if check_result.returncode == 0:
+                # 如果 INPUT 链中存在非默认策略的规则行，则认为已经初始化过
+                lines = check_result.stdout.strip().split("\n")
+                # 跳过 "Chain INPUT" 和 "target prot ..." 表头行
+                rule_lines = [
+                    line for line in lines
+                    if line.strip() and not line.startswith("Chain") and not line.startswith("target")
+                ]
+                if rule_lines:
+                    logger.info("INPUT 链已存在规则，跳过默认规则初始化")
+                    return
+        except Exception as e:
+            logger.warning("检查 INPUT 链规则失败: {}，将继续初始化默认规则".format(e))
+
+        # 定义默认规则列表：(描述, iptables 参数列表)
+        default_rules = [
+            ("允许 loopback 接口", ["-A", "INPUT", "-i", "lo", "-j", "ACCEPT"]),
+            (
+                "允许已建立/关联连接 (INPUT)",
+                ["-A", "INPUT", "-m", "state", "--state", "ESTABLISHED,RELATED", "-j", "ACCEPT"],
+            ),
+            (
+                "允许 FORWARD 已建立连接",
+                ["-A", "FORWARD", "-m", "state", "--state", "ESTABLISHED,RELATED", "-j", "ACCEPT"],
+            ),
+            ("允许 SSH (tcp/22)", ["-A", "INPUT", "-p", "tcp", "--dport", "22", "-j", "ACCEPT"]),
+            ("允许 DNS (udp/53)", ["-A", "INPUT", "-p", "udp", "--dport", "53", "-j", "ACCEPT"]),
+            ("允许 DNS (tcp/53)", ["-A", "INPUT", "-p", "tcp", "--dport", "53", "-j", "ACCEPT"]),
+            (
+                "允许 Web 管理界面 (tcp/8443)",
+                ["-A", "INPUT", "-p", "tcp", "--dport", "8443", "-j", "ACCEPT"],
+            ),
+            (
+                "允许 ICMP (ping)",
+                ["-A", "INPUT", "-p", "icmp", "--icmp-type", "echo-request", "-j", "ACCEPT"],
+            ),
+            ("允许 DHCP (udp/67:68)", ["-A", "INPUT", "-p", "udp", "--dport", "67:68", "-j", "ACCEPT"]),
+            (
+                "丢弃无效包",
+                ["-A", "INPUT", "-m", "conntrack", "--ctstate", "INVALID", "-j", "DROP"],
+            ),
+            (
+                "记录被丢弃的 INPUT 包",
+                ["-A", "INPUT", "-j", "LOG", "--log-prefix", "GK:INPUT-DROP: "],
+            ),
+            (
+                "记录被丢弃的 FORWARD 包",
+                ["-A", "FORWARD", "-j", "LOG", "--log-prefix", "GK:FORWARD-DROP: "],
+            ),
+        ]
+
+        success_count = 0
+        fail_count = 0
+
+        for description, rule_args in default_rules:
+            try:
+                # 使用 iptables -C 检查规则是否已存在，避免重复添加
+                # -C 参数与 -A 参数格式一致，只是将 -A 替换为 -C
+                check_args = ["iptables", "-C"] + rule_args[1:]  # 去掉 -A，换成 -C
+                check_result = subprocess.run(
+                    check_args, capture_output=True, text=True, timeout=5
+                )
+                if check_result.returncode == 0:
+                    logger.debug("规则已存在，跳过: {}".format(description))
+                    continue
+
+                # 规则不存在，执行添加
+                add_result = subprocess.run(
+                    ["iptables"] + rule_args,
+                    capture_output=True, text=True, timeout=5
+                )
+                if add_result.returncode == 0:
+                    logger.info("默认规则添加成功: {}".format(description))
+                    success_count += 1
+                else:
+                    logger.warning(
+                        "默认规则添加失败: {}，错误: {}".format(
+                            description, add_result.stderr.strip()
+                        )
+                    )
+                    fail_count += 1
+            except subprocess.TimeoutExpired:
+                logger.warning("默认规则添加超时: {}".format(description))
+                fail_count += 1
+            except Exception as e:
+                logger.warning("默认规则添加异常: {}，错误: {}".format(description, e))
+                fail_count += 1
+
+        # 设置链默认策略（单独处理，因为 -P 不支持 -C 检查）
+        default_policies = [
+            ("INPUT 链默认策略 DROP", ["-P", "INPUT", "DROP"]),
+            ("FORWARD 链默认策略 DROP", ["-P", "FORWARD", "DROP"]),
+        ]
+
+        for description, policy_args in default_policies:
+            try:
+                policy_result = subprocess.run(
+                    ["iptables"] + policy_args,
+                    capture_output=True, text=True, timeout=5
+                )
+                if policy_result.returncode == 0:
+                    logger.info("默认策略设置成功: {}".format(description))
+                    success_count += 1
+                else:
+                    logger.warning(
+                        "默认策略设置失败: {}，错误: {}".format(
+                            description, policy_result.stderr.strip()
+                        )
+                    )
+                    fail_count += 1
+            except subprocess.TimeoutExpired:
+                logger.warning("默认策略设置超时: {}".format(description))
+                fail_count += 1
+            except Exception as e:
+                logger.warning("默认策略设置异常: {}，错误: {}".format(description, e))
+                fail_count += 1
+
+        logger.info(
+            "默认防火墙规则初始化完成，成功: {}，失败: {}".format(success_count, fail_count)
+        )
+
     def _detect_backend(self) -> str:
         """检测防火墙后端"""
         try:

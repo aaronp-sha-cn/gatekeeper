@@ -30,6 +30,14 @@ except ImportError:
     Swagger = None
     _HAS_SWAGGER = False
 
+# flask_wtf 可选依赖（CSRF 保护）
+try:
+    from flask_wtf.csrf import CSRFProtect
+    _HAS_CSRF = True
+except ImportError:
+    CSRFProtect = None
+    _HAS_CSRF = False
+
 logger = get_logger("web")
 
 
@@ -92,8 +100,9 @@ def create_web_app() -> Flask:
     app.config["WTF_CSRF_TIME_LIMIT"] = 3600  # CSRF token 有效期 1 小时
 
     # 初始化 CSRF 保护
-    from flask_wtf.csrf import CSRFProtect
-    csrf = CSRFProtect(app)
+    csrf = None
+    if _HAS_CSRF and CSRFProtect is not None:
+        csrf = CSRFProtect(app)
 
     # 初始化扩展
     _init_limiter(app)
@@ -103,23 +112,26 @@ def create_web_app() -> Flask:
     _register_context_processors(app)
 
     # 对 auth 蓝图豁免 CSRF 检查（登录前无法获取 CSRF token）
-    try:
-        auth_bp = app.blueprints.get("auth")
-        if auth_bp:
-            csrf.exempt(auth_bp)
-            logger.info("已对 auth 蓝图豁免 CSRF 检查")
-    except Exception as e:
-        logger.warning("CSRF 豁免配置失败: {}".format(e))
+    if csrf is not None:
+        try:
+            auth_bp = app.blueprints.get("auth")
+            if auth_bp:
+                csrf.exempt(auth_bp)
+                logger.info("已对 auth 蓝图豁免 CSRF 检查")
+        except Exception as e:
+            logger.warning("CSRF 豁免配置失败: {}".format(e))
 
-    # 对所有已注册蓝图豁免 CSRF 检查
-    # （前端 API 请求统一使用 fetch，多数未携带 CSRF token）
-    try:
-        for bp_name, bp_obj in app.blueprints.items():
-            if bp_name != "auth":  # auth 已单独处理
-                csrf.exempt(bp_obj)
-        logger.info("已对所有蓝图豁免 CSRF 检查")
-    except Exception as e:
-        logger.warning("全局CSRF豁免配置失败: {}".format(e))
+        # 对所有已注册蓝图豁免 CSRF 检查
+        # （前端 API 请求统一使用 fetch，多数未携带 CSRF token）
+        try:
+            for bp_name, bp_obj in app.blueprints.items():
+                if bp_name != "auth":  # auth 已单独处理
+                    csrf.exempt(bp_obj)
+            logger.info("已对所有蓝图豁免 CSRF 检查")
+        except Exception as e:
+            logger.warning("全局CSRF豁免配置失败: {}".format(e))
+    else:
+        logger.warning("flask_wtf 未安装，CSRF 保护不可用")
 
     # 初始化 Swagger API 文档 (访问 /apidocs 查看)
     if _HAS_SWAGGER and Swagger is not None:

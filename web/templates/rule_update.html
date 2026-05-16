@@ -173,10 +173,16 @@ var MODULE_KEYS = {
     dns: 'dns_blacklist'
 };
 
-document.addEventListener('DOMContentLoaded', function() {
+function initPage() {
     loadStatus();
     setInterval(loadStatus, 60000);
-});
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initPage);
+} else {
+    initPage();
+}
+document.addEventListener('pjax:contentloaded', initPage);
 
 function loadStatus() {
     fetch('/rule-update/api/status')

@@ -492,7 +492,7 @@ function escapeHtml(str) {
     }
 
     // ===== DOM Ready 后绑定事件 =====
-    document.addEventListener('DOMContentLoaded', function() {
+    function initPage() {
         // 协议启动/停止/配置按钮
         var protocols = ['http', 'ftp', 'smtp', 'smb'];
         protocols.forEach(function(proto) {
@@ -538,7 +538,13 @@ function escapeHtml(str) {
 
         // 定时刷新统计
         setInterval(loadStats, 10000);
-    });
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initPage);
+    } else {
+        initPage();
+    }
+    document.addEventListener('pjax:contentloaded', initPage);
 })();
 </script>
 {% endblock %}

@@ -70,10 +70,16 @@ function escapeHtml(str) {
 
 let currentPage = 1;
 
-document.addEventListener('DOMContentLoaded', function() {
+function initPage() {
     loadAlerts();
     loadAlertStats();
-});
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initPage);
+} else {
+    initPage();
+}
+document.addEventListener('pjax:contentloaded', initPage);
 
 function loadAlerts(page = 1) {
     currentPage = page;

@@ -326,10 +326,16 @@
             .catch(function() {});
     }
 
-    document.addEventListener('DOMContentLoaded', function() {
+    function initPage() {
         loadAuditUsers();
         loadStats();
         loadLogs();
-    });
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initPage);
+    } else {
+        initPage();
+    }
+    document.addEventListener('pjax:contentloaded', initPage);
 </script>
 {% endblock %}

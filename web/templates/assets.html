@@ -534,7 +534,7 @@ const RISK_LABELS = {
 // ============================================================
 // 初始化
 // ============================================================
-document.addEventListener('DOMContentLoaded', function() {
+function initPage() {
     loadStats();
     loadAssets();
     loadScanHistory();
@@ -544,7 +544,13 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('custom-ports-group').style.display =
             this.value === 'custom' ? 'flex' : 'none';
     });
-});
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initPage);
+} else {
+    initPage();
+}
+document.addEventListener('pjax:contentloaded', initPage);
 
 // ============================================================
 // 扫描控制

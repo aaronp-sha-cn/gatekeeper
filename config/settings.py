@@ -518,7 +518,7 @@ class Settings(object):
         self.scheduler = SchedulerConfig()
 
         # 系统信息
-        self.version = "1.0.5-beta3"
+        self.version = "1.0.6"
         self.app_name = "GateKeeper"
         self.instance_name = _env("INSTANCE_NAME", "default")
 

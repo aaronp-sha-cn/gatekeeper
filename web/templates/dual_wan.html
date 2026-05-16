@@ -918,7 +918,7 @@
     }
 
     // 初始化
-    document.addEventListener('DOMContentLoaded', function() {
+    function initPage() {
         loadPhysicalInterfaces();
         loadStats();
         loadWanInterfaces();
@@ -932,6 +932,12 @@
             loadWanInterfaces();
             loadFailoverLog();
         }, 10000);
-    });
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initPage);
+    } else {
+        initPage();
+    }
+    document.addEventListener('pjax:contentloaded', initPage);
 </script>
 {% endblock %}

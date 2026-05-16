@@ -295,13 +295,19 @@
     let sourceChart = null;
 
     // ===== 初始化 =====
-    document.addEventListener('DOMContentLoaded', function() {
+    function initPage() {
         loadStats();
         loadEvents();
         loadTimeline();
         loadSourceChart();
         loadRules();
-    });
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initPage);
+    } else {
+        initPage();
+    }
+    document.addEventListener('pjax:contentloaded', initPage);
 
     // ===== 统计概览 =====
     function loadStats() {

@@ -352,8 +352,17 @@ class GatewayAntivirusEngine:
 
         if self._clamav_available:
             try:
+                freshclam_conf = "/etc/clamav/freshclam.conf"
+                if not os.path.exists(freshclam_conf):
+                    os.makedirs(os.path.dirname(freshclam_conf), exist_ok=True)
+                    with open(freshclam_conf, 'w') as f:
+                        f.write("DatabaseMirror database.clamav.net\n")
+                        f.write("DatabaseMirror db.local.clamav.net\n")
+                        f.write("ScriptedUpdates yes\n")
+                        f.write("NotifyClamd /etc/clamav/clamd.conf\n")
+                        f.write("CompressLocalDatabase yes\n")
                 proc = subprocess.run(
-                    ["freshclam"],
+                    ["freshclam", "--config-file=" + freshclam_conf],
                     capture_output=True, text=True, timeout=120
                 )
                 result["clamav_updated"] = proc.returncode == 0
