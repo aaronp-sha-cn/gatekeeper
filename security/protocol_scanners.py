@@ -138,9 +138,29 @@ MaxConnections 1024
             logger.error("配置 c-icap 失败: %s", e)
             return {"status": "error", "message": str(e)}
 
+    def _ensure_packages(self, packages):
+        """确保指定的系统包已安装，未安装则自动安装"""
+        import shutil
+        for pkg in packages:
+            if not shutil.which(pkg.split("/")[0].split()[0]):
+                logger.info("正在安装 %s ...", pkg)
+                try:
+                    subprocess.run(
+                        ["apt-get", "install", "-y", "-o", "DPkg::Options::=--force-confdef",
+                         "-o", "DPkg::Options::=--force-confold"] + pkg.split(),
+                        capture_output=True, timeout=120
+                    )
+                    logger.info("%s 安装完成", pkg)
+                except Exception as e:
+                    logger.warning("安装 %s 失败: %s", pkg, e)
+
     def start_services(self) -> dict:
         """启动 Squid 和 c-icap 服务"""
         results = {}
+
+        # 确保依赖已安装
+        self._ensure_packages(["squid"])
+        self._ensure_packages(["c-icap libc-icap-mod-clamav"])
 
         # 启动 c-icap
         try:
@@ -263,6 +283,10 @@ SystemLog /var/log/proftpd/system.log
     def start_services(self) -> dict:
         """启动 ProFTPD 和 ClamAV 服务"""
         results = {}
+
+        # 确保依赖已安装
+        self._ensure_packages(["clamav clamav-daemon"])
+        self._ensure_packages(["proftpd-basic"])
 
         # 启动 ClamAV daemon
         try:
@@ -402,6 +426,11 @@ $LOGFILE = '/var/log/amavis/amavis.log';
         """启动服务"""
         results = {}
 
+        # 确保依赖已安装
+        self._ensure_packages(["clamav clamav-daemon"])
+        self._ensure_packages(["amavisd-new"])
+        self._ensure_packages(["postfix"])
+
         # 启动 ClamAV daemon
         try:
             subprocess.run(["clamd"], capture_output=True, timeout=10)
@@ -524,6 +553,10 @@ class SMBScanner(ProtocolScannerBase):
     def start_services(self) -> dict:
         """启动服务"""
         results = {}
+
+        # 确保依赖已安装
+        self._ensure_packages(["clamav clamav-daemon"])
+        self._ensure_packages(["samba"])
 
         # 启动 ClamAV daemon
         try:
