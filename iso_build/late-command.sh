@@ -39,11 +39,11 @@ echo "[GateKeeper] Script permissions set"
 
 # 5. Configure GRUB for traditional network interface naming (eth0, eth1, ...)
 if [ -f /target/etc/default/grub ]; then
-    sed -i 's/GRUB_CMDLINE_LINUX=""/GRUB_CMDLINE_LINUX="net.ifnames=0 biosdevname=0"/' /target/etc/default/grub
-    sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT=""/GRUB_CMDLINE_LINUX_DEFAULT="net.ifnames=0 biosdevname=0"/' /target/etc/default/grub
+    sed -i 's/GRUB_CMDLINE_LINUX=""/GRUB_CMDLINE_LINUX="net.ifnames=0 biosdevname=0 splash"/' /target/etc/default/grub
+    sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT=""/GRUB_CMDLINE_LINUX_DEFAULT="net.ifnames=0 biosdevname=0 splash quiet"/' /target/etc/default/grub
     if ! grep -q "net.ifnames=0" /target/etc/default/grub; then
-        sed -i 's/GRUB_CMDLINE_LINUX="\(.*\)"/GRUB_CMDLINE_LINUX="\1 net.ifnames=0 biosdevname=0"/' /target/etc/default/grub 2>/dev/null || true
-        sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 net.ifnames=0 biosdevname=0"/' /target/etc/default/grub 2>/dev/null || true
+        sed -i 's/GRUB_CMDLINE_LINUX="\(.*\)"/GRUB_CMDLINE_LINUX="\1 net.ifnames=0 biosdevname=0 splash"/' /target/etc/default/grub 2>/dev/null || true
+        sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 net.ifnames=0 biosdevname=0 splash quiet"/' /target/etc/default/grub 2>/dev/null || true
     fi
 
     # 5.1. Configure GRUB background image
