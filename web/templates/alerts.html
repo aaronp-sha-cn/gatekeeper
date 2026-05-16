@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}告警管理{% endblock %}
+
+{% block content %}
+<div class="alerts-page">
+    <!-- 过滤器 -->
+    <div class="filter-bar">
+        <select id="filter-level" onchange="loadAlerts()">
+            <option value="">全部级别</option>
+            <option value="critical">严重</option>
+            <option value="high">高危</option>
+            <option value="medium">中危</option>
+            <option value="low">低危</option>
+        </select>
+        <select id="filter-status" onchange="loadAlerts()">
+            <option value="">全部状态</option>
+            <option value="new">新告警</option>
+            <option value="acknowledged">已确认</option>
+            <option value="resolved">已解决</option>
+            <option value="ignored">已忽略</option>
+        </select>
+        <button onclick="loadAlerts()" class="btn btn-primary">刷新</button>
+    </div>
+
+    <!-- 告警统计 -->
+    <div class="alert-stats" id="alert-stats">
+        <span class="stat-item">总计: <strong>0</strong></span>
+        <span class="stat-item critical">严重: <strong>0</strong></span>
+        <span class="stat-item high">高危: <strong>0</strong></span>
+        <span class="stat-item medium">中危: <strong>0</strong></span>
+        <span class="stat-item low">低危: <strong>0</strong></span>
+    </div>
+
+    <!-- 告警列表 -->
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>级别</th>
+                <th>标题</th>
+                <th>状态</th>
+                <th>来源</th>
+                <th>源IP</th>
+                <th>时间</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="alerts-body">
+            <tr><td colspan="8" class="empty">加载中...</td></tr>
+        </tbody>
+    </table>
+
+    <!-- 分页 -->
+    <div class="pagination" id="pagination"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+let currentPage = 1;
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadAlerts();
+    loadAlertStats();
+});
+
+function loadAlerts(page = 1) {
+    currentPage = page;
+    const level = document.getElementById('filter-level').value;
+    const status = document.getElementById('filter-status').value;
+
+    fetch(`/alerts/api/list?page=${page}&per_page=20&level=${level}&status=${status}`)
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                renderAlerts(data.data.alerts);
+                renderPagination(data.data.page, data.data.total_pages);
+            }
+        });
+}
+
+function renderAlerts(alerts) {
+    const tbody = document.getElementById('alerts-body');
+    if (alerts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无告警</td></tr>';
+        return;
+    }
+    tbody.innerHTML = alerts.map(a => `
+        <tr class="level-${a.level}">
+            <td>${a.id}</td>
+            <td><span class="badge badge-${a.level}">${a.level}</span></td>
+            <td>${a.title}</td>
+            <td><span class="status status-${a.status}">${a.status}</span></td>
+            <td>${a.source}</td>
+            <td>${a.source_ip || '-'}</td>
+            <td>${formatTime(a.created_at)}</td>
+            <td>
+                ${a.status === 'new' ? `
+                    <button onclick="ackAlert(${a.id})" class="btn btn-sm">确认</button>
+                    <button onclick="resolveAlert(${a.id})" class="btn btn-sm btn-success">解决</button>
+                ` : ''}
+                ${a.status === 'acknowledged' ? `
+                    <button onclick="resolveAlert(${a.id})" class="btn btn-sm btn-success">解决</button>
+                ` : ''}
+            </td>
+        </tr>
+    `).join('');
+}
+
+function ackAlert(id) {
+    fetch(`/alerts/api/${id}/acknowledge`, {method: 'POST'})
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(() => { loadAlerts(currentPage); loadAlertStats(); });
+}
+
+function resolveAlert(id) {
+    fetch(`/alerts/api/${id}/resolve`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({note: ''})})
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(() => { loadAlerts(currentPage); loadAlertStats(); });
+}
+
+function loadAlertStats() {
+    fetch('/alerts/api/stats')
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                const s = data.data;
+                document.getElementById('alert-stats').innerHTML = `
+                    <span class="stat-item">总计: <strong>${s.total}</strong></span>
+                    <span class="stat-item critical">严重: <strong>${s.by_level.critical || 0}</strong></span>
+                    <span class="stat-item high">高危: <strong>${s.by_level.high || 0}</strong></span>
+                    <span class="stat-item medium">中危: <strong>${s.by_level.medium || 0}</strong></span>
+                    <span class="stat-item low">低危: <strong>${s.by_level.low || 0}</strong></span>
+                `;
+            }
+        });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,731 @@
+{% extends "base.html" %}
+
+{% block title %}VPN管理{% endblock %}
+
+{% block content %}
+<!-- 统计概览 -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>VPN配置数</h3>
+        <div class="value" id="stat-total-configs">-</div>
+    </div>
+    <div class="stat-card">
+        <h3>活跃配置</h3>
+        <div class="value" id="stat-active-configs">-</div>
+    </div>
+    <div class="stat-card">
+        <h3>已连接客户端</h3>
+        <div class="value" id="stat-connected">-</div>
+    </div>
+    <div class="stat-card">
+        <h3>总流量</h3>
+        <div class="value" id="stat-traffic">-</div>
+    </div>
+</div>
+
+<!-- 创建VPN配置 -->
+<div class="section">
+    <h2>创建VPN配置</h2>
+    <div class="create-form">
+        <div class="form-group">
+            <label>配置名称</label>
+            <input type="text" id="cfg-name" placeholder="如: office-vpn">
+        </div>
+        <div class="form-group">
+            <label>VPN类型</label>
+            <select id="cfg-type">
+                <option value="wireguard">WireGuard</option>
+                <option value="ipsec">IPSec</option>
+                <option value="openvpn">OpenVPN</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>服务器IP</label>
+            <input type="text" id="cfg-server-ip" placeholder="如: 203.0.113.1">
+        </div>
+        <div class="form-group">
+            <label>端口</label>
+            <input type="number" id="cfg-port" placeholder="如: 51820" min="1" max="65535">
+        </div>
+        <div class="form-group">
+            <label>客户端IP范围</label>
+            <input type="text" id="cfg-ip-range" placeholder="如: 10.10.0.0/24">
+        </div>
+        <div class="form-group">
+            <label>DNS服务器</label>
+            <input type="text" id="cfg-dns" placeholder="如: 8.8.8.8, 8.8.4.4">
+        </div>
+        <div class="form-group">
+            <label>MTU</label>
+            <input type="number" id="cfg-mtu" value="1420" min="576" max="9000">
+        </div>
+        <div class="form-group">
+            <label>Keepalive(秒)</label>
+            <input type="number" id="cfg-keepalive" value="25" min="0" max="300">
+        </div>
+        <div class="form-group" style="display: flex; align-items: flex-end;">
+            <button class="btn btn-primary" onclick="createConfig()">创建配置</button>
+        </div>
+    </div>
+</div>
+
+<!-- VPN配置列表 -->
+<div class="section">
+    <h2>VPN配置列表</h2>
+    <div id="configs-list">
+        <p style="color: var(--text-muted);">加载中...</p>
+    </div>
+</div>
+
+<!-- 客户端管理 -->
+<div class="section">
+    <div class="section-header">
+        <h2>客户端管理</h2>
+        <div class="section-actions">
+            <select id="client-config-select" onchange="loadClients()">
+                <option value="">选择VPN配置</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- 添加客户端表单 -->
+    <div class="add-client-form" id="add-client-area" style="display: none;">
+        <div class="form-row">
+            <div class="form-group">
+                <label>客户端用户名</label>
+                <input type="text" id="client-username" placeholder="如: user1">
+            </div>
+            <div class="form-group" id="public-key-group">
+                <label>公钥 (WireGuard)</label>
+                <input type="text" id="client-public-key" placeholder="WireGuard客户端公钥">
+            </div>
+            <div class="form-group" style="display: flex; align-items: flex-end;">
+                <button class="btn btn-primary" onclick="addClient()">添加客户端</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 客户端列表 -->
+    <table id="clients-table-area" style="display: none;">
+        <thead>
+            <tr>
+                <th>用户名</th>
+                <th>分配IP</th>
+                <th>公钥</th>
+                <th>状态</th>
+                <th>发送流量</th>
+                <th>接收流量</th>
+                <th>最后连接</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="clients-table">
+        </tbody>
+    </table>
+    <p id="clients-empty" style="color: var(--text-muted); display: none;">请先选择一个VPN配置</p>
+</div>
+
+<!-- 连接状态 -->
+<div class="section">
+    <h2>连接状态</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>配置名称</th>
+                <th>类型</th>
+                <th>服务器</th>
+                <th>状态</th>
+                <th>客户端数</th>
+                <th>已连接</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="status-table">
+            <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 统计卡片 */
+    .stat-card .value { color: #60a5fa; }
+
+    /* 区块 */
+    .section h2 { color: var(--primary); margin-bottom: 15px; font-size: 18px; }
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    .section-header h2 { margin-bottom: 0; }
+    .section-actions { display: flex; gap: 10px; align-items: center; }
+
+    /* 创建表单 */
+    .create-form {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 15px;
+    }
+
+    /* 添加客户端表单 */
+    .add-client-form {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 15px;
+    }
+    .form-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+    }
+
+    /* 配置卡片 */
+    .config-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 12px;
+        transition: border-color 0.2s;
+    }
+    .config-card:hover { border-color: var(--primary); }
+    .config-card.enabled { border-left: 4px solid #86efac; }
+    .config-card.disabled { border-left: 4px solid #94a3b8; }
+    .config-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    .config-card-header h3 { font-size: 16px; color: var(--text); }
+    .config-status {
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .config-status.enabled { background: rgba(22, 163, 74, 0.2); color: #86efac; }
+    .config-status.disabled { background: rgba(148, 163, 184, 0.2); color: #94a3b8; }
+    .config-info { color: var(--text-muted); font-size: 13px; margin-bottom: 12px; }
+    .config-info span { margin-right: 15px; }
+    .config-actions { display: flex; gap: 8px; }
+
+    /* 类型标签 */
+    .type-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    .type-wireguard { background: rgba(96, 165, 250, 0.2); color: #60a5fa; }
+    .type-ipsec { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+    .type-openvpn { background: rgba(52, 211, 153, 0.2); color: #34d399; }
+
+    /* 数据表格 */
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; }
+    th { color: var(--text-muted); font-weight: 600; white-space: nowrap; }
+    tr:hover { background: rgba(37, 99, 235, 0.05); }
+
+    /* 状态标签 */
+    .status-connected { color: #86efac; font-weight: 600; }
+    .status-disconnected { color: #94a3b8; }
+    .status-running { color: #86efac; font-weight: 600; }
+    .status-stopped { color: #fca5a5; font-weight: 600; }
+
+    /* 按钮 */
+    .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-danger:hover { opacity: 0.9; }
+    .btn-success { background: #22c55e; color: white; }
+    .btn-success:hover { opacity: 0.9; }
+    .btn-warning { background: #eab308; color: white; }
+    .btn-warning:hover { opacity: 0.9; }
+    .btn-secondary { background: var(--border); color: var(--text); }
+    .btn-secondary:hover { opacity: 0.8; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+    /* 表单 */
+    .form-group { display: flex; flex-direction: column; gap: 4px; }
+    .form-group label { color: var(--text-muted); font-size: 13px; }
+    .form-group input, .form-group select {
+        padding: 8px 12px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-size: 13px;
+    }
+    .form-group input:focus, .form-group select:focus {
+        outline: none;
+        border-color: var(--primary);
+    }
+    .section-actions select {
+        padding: 6px 10px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-size: 13px;
+    }
+
+    /* 配置预览弹窗 */
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.6);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal-content {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 24px;
+        max-width: 700px;
+        width: 90%;
+        max-height: 80vh;
+        overflow-y: auto;
+    }
+    .modal-content h3 { color: var(--primary); margin-bottom: 12px; }
+    .modal-content pre {
+        background: rgba(0,0,0,0.3);
+        padding: 16px;
+        border-radius: 4px;
+        font-size: 12px;
+        color: #e2e8f0;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+    .modal-actions { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+
+    /* 流量显示 */
+    .traffic-value { font-family: monospace; font-size: 12px; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // ============================================================
+    // 工具函数
+    // ============================================================
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function formatTime(isoStr) {
+        if (!isoStr) return '-';
+        return new Date(isoStr).toLocaleString();
+    }
+
+    function truncate(text, len) {
+        if (!text) return '-';
+        return text.length > len ? text.substring(0, len) + '...' : text;
+    }
+
+    // ============================================================
+    // 统计数据
+    // ============================================================
+
+    function loadStats() {
+        fetch('/vpn/api/stats')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const d = data.data;
+                    document.getElementById('stat-total-configs').textContent = d.total_configs;
+                    document.getElementById('stat-active-configs').textContent = d.active_configs;
+                    document.getElementById('stat-connected').textContent = d.connected_clients;
+                    document.getElementById('stat-traffic').textContent = formatBytes(d.total_traffic);
+                }
+            });
+    }
+
+    // ============================================================
+    // 配置管理
+    // ============================================================
+
+    function loadConfigs() {
+        fetch('/vpn/api/configs')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                const container = document.getElementById('configs-list');
+                if (data.status === 'ok' && data.data.configs.length > 0) {
+                    container.innerHTML = data.data.configs.map(c => {
+                        const statusClass = c.enabled ? 'enabled' : 'disabled';
+                        const statusText = c.enabled ? '运行中' : '已停止';
+                        const typeClass = 'type-' + c.vpn_type;
+                        const toggleBtn = c.enabled
+                            ? '<button class="btn btn-warning btn-sm" onclick="toggleConfig(' + c.id + ', false)">停止</button>'
+                            : '<button class="btn btn-success btn-sm" onclick="toggleConfig(' + c.id + ', true)">启动</button>';
+                        return '<div class="config-card ' + statusClass + '">' +
+                            '<div class="config-card-header">' +
+                                '<h3>' + escapeHtml(c.name) + '</h3>' +
+                                '<span class="config-status ' + statusClass + '">' + statusText + '</span>' +
+                            '</div>' +
+                            '<div class="config-info">' +
+                                '<span class="type-badge ' + typeClass + '">' + c.vpn_type.toUpperCase() + '</span>' +
+                                '<span>服务器: ' + c.server_ip + ':' + c.server_port + '</span>' +
+                                '<span>IP范围: ' + c.client_ip_range + '</span>' +
+                                '<span>客户端: ' + c.client_count + '</span>' +
+                                '<span>已连接: ' + c.connected_count + '</span>' +
+                            '</div>' +
+                            '<div class="config-actions">' +
+                                toggleBtn +
+                                '<button class="btn btn-secondary btn-sm" onclick="viewConfig(' + c.id + ')">查看配置</button>' +
+                                '<button class="btn btn-danger btn-sm" onclick="deleteConfig(' + c.id + ')">删除</button>' +
+                            '</div>' +
+                        '</div>';
+                    }).join('');
+
+                    // 更新客户端配置选择下拉
+                    const sel = document.getElementById('client-config-select');
+                    const currentVal = sel.value;
+                    sel.innerHTML = '<option value="">选择VPN配置</option>';
+                    data.data.configs.forEach(c => {
+                        sel.innerHTML += '<option value="' + c.id + '">' + escapeHtml(c.name) + ' (' + c.vpn_type + ')</option>';
+                    });
+                    sel.value = currentVal;
+                } else {
+                    container.innerHTML = '<p style="color: var(--text-muted);">暂无VPN配置，请创建新配置</p>';
+                }
+
+                // 更新连接状态表格
+                loadStatus();
+            });
+    }
+
+    function createConfig() {
+        const name = document.getElementById('cfg-name').value.trim();
+        const vpn_type = document.getElementById('cfg-type').value;
+        const server_ip = document.getElementById('cfg-server-ip').value.trim();
+        const port = parseInt(document.getElementById('cfg-port').value);
+        const ip_range = document.getElementById('cfg-ip-range').value.trim();
+        const dns = document.getElementById('cfg-dns').value.trim();
+        const mtu = parseInt(document.getElementById('cfg-mtu').value) || 1420;
+        const keepalive = parseInt(document.getElementById('cfg-keepalive').value) || 25;
+
+        if (!name) { alert('请输入配置名称'); return; }
+        if (!server_ip) { alert('请输入服务器IP'); return; }
+        if (!port || port < 1 || port > 65535) { alert('请输入有效端口 (1-65535)'); return; }
+        if (!ip_range) { alert('请输入客户端IP范围'); return; }
+
+        fetch('/vpn/api/configs', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                name: name, vpn_type: vpn_type, server_ip: server_ip,
+                port: port, ip_range: ip_range, dns: dns,
+                mtu: mtu, keepalive: keepalive,
+            })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                alert('VPN配置创建成功');
+                document.getElementById('cfg-name').value = '';
+                document.getElementById('cfg-server-ip').value = '';
+                document.getElementById('cfg-port').value = '';
+                document.getElementById('cfg-ip-range').value = '';
+                document.getElementById('cfg-dns').value = '';
+                loadConfigs();
+                loadStats();
+            } else {
+                alert('创建失败: ' + data.message);
+            }
+        });
+    }
+
+    function deleteConfig(id) {
+        if (!confirm('确定要删除此VPN配置吗？关联的客户端也将被删除。')) return;
+
+        fetch('/vpn/api/configs/' + id, { method: 'DELETE' })
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    loadConfigs();
+                    loadStats();
+                } else {
+                    alert('删除失败: ' + data.message);
+                }
+            });
+    }
+
+    function toggleConfig(id, enabled) {
+        fetch('/vpn/api/configs/' + id + '/toggle', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ enabled: enabled })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                loadConfigs();
+                loadStats();
+            } else {
+                alert('操作失败: ' + data.message);
+            }
+        });
+    }
+
+    function viewConfig(id) {
+        fetch('/vpn/api/configs')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const config = data.data.configs.find(c => c.id === id);
+                    if (config && config.config_text) {
+                        showModal('配置文件 - ' + config.name, config.config_text);
+                    } else {
+                        alert('无法获取配置内容');
+                    }
+                }
+            });
+    }
+
+    // ============================================================
+    // 客户端管理
+    // ============================================================
+
+    function loadClients() {
+        const configId = document.getElementById('client-config-select').value;
+        const addArea = document.getElementById('add-client-area');
+        const tableArea = document.getElementById('clients-table-area');
+        const emptyMsg = document.getElementById('clients-empty');
+
+        if (!configId) {
+            addArea.style.display = 'none';
+            tableArea.style.display = 'none';
+            emptyMsg.style.display = 'block';
+            return;
+        }
+
+        addArea.style.display = 'block';
+        tableArea.style.display = 'table';
+        emptyMsg.style.display = 'none';
+
+        // 根据VPN类型显示/隐藏公钥输入
+        fetch('/vpn/api/configs')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const config = data.data.configs.find(c => c.id === parseInt(configId));
+                    const keyGroup = document.getElementById('public-key-group');
+                    if (config && config.vpn_type === 'wireguard') {
+                        keyGroup.style.display = 'flex';
+                    } else {
+                        keyGroup.style.display = 'none';
+                    }
+                }
+            });
+
+        fetch('/vpn/api/configs/' + configId + '/clients')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                const tbody = document.getElementById('clients-table');
+                if (data.status === 'ok' && data.data.clients.length > 0) {
+                    tbody.innerHTML = data.data.clients.map(c => {
+                        const statusClass = c.connected ? 'status-connected' : 'status-disconnected';
+                        const statusText = c.connected ? '已连接' : '未连接';
+                        return '<tr>' +
+                            '<td>' + escapeHtml(c.username) + '</td>' +
+                            '<td><code>' + escapeHtml(c.assigned_ip) + '</code></td>' +
+                            '<td class="traffic-value">' + truncate(escapeHtml(c.public_key), 30) + '</td>' +
+                            '<td class="' + statusClass + '">' + statusText + '</td>' +
+                            '<td class="traffic-value">' + formatBytes(c.bytes_sent) + '</td>' +
+                            '<td class="traffic-value">' + formatBytes(c.bytes_received) + '</td>' +
+                            '<td>' + formatTime(c.last_connected) + '</td>' +
+                            '<td>' +
+                                '<button class="btn btn-secondary btn-sm" onclick="genClientConfig(' + configId + ', ' + c.id + ')">生成配置</button> ' +
+                                '<button class="btn btn-danger btn-sm" onclick="removeClient(' + c.id + ')">删除</button>' +
+                            '</td>' +
+                        '</tr>';
+                    }).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">暂无客户端</td></tr>';
+                }
+            });
+    }
+
+    function addClient() {
+        const configId = document.getElementById('client-config-select').value;
+        if (!configId) { alert('请先选择VPN配置'); return; }
+
+        const username = document.getElementById('client-username').value.trim();
+        const publicKey = document.getElementById('client-public-key').value.trim();
+
+        if (!username) { alert('请输入客户端用户名'); return; }
+
+        fetch('/vpn/api/configs/' + configId + '/clients', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ username: username, public_key: publicKey })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                document.getElementById('client-username').value = '';
+                document.getElementById('client-public-key').value = '';
+                loadClients();
+                loadConfigs();
+                loadStats();
+            } else {
+                alert('添加失败: ' + data.message);
+            }
+        });
+    }
+
+    function removeClient(clientId) {
+        if (!confirm('确定要删除此客户端吗？')) return;
+
+        fetch('/vpn/api/clients/' + clientId, { method: 'DELETE' })
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    loadClients();
+                    loadConfigs();
+                    loadStats();
+                } else {
+                    alert('删除失败: ' + data.message);
+                }
+            });
+    }
+
+    function genClientConfig(configId, clientId) {
+        fetch('/vpn/api/configs/' + configId + '/clients/' + clientId + '/config')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    showModal('客户端配置 - ' + data.data.filename, data.data.config_text);
+                } else {
+                    alert('生成失败: ' + data.message);
+                }
+            });
+    }
+
+    // ============================================================
+    // 连接状态
+    // ============================================================
+
+    function loadStatus() {
+        fetch('/vpn/api/status')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                const tbody = document.getElementById('status-table');
+                if (data.status === 'ok' && data.data.configs.length > 0) {
+                    tbody.innerHTML = data.data.configs.map(c => {
+                        const statusClass = c.enabled ? 'status-running' : 'status-stopped';
+                        const statusText = c.enabled ? '运行中' : '已停止';
+                        const typeClass = 'type-' + c.type;
+                        return '<tr>' +
+                            '<td>' + escapeHtml(c.name) + '</td>' +
+                            '<td><span class="type-badge ' + typeClass + '">' + c.type.toUpperCase() + '</span></td>' +
+                            '<td><code>' + c.server + '</code></td>' +
+                            '<td class="' + statusClass + '">' + statusText + '</td>' +
+                            '<td>' + c.client_count + '</td>' +
+                            '<td>' + c.connected_count + '</td>' +
+                            '<td>' +
+                                (c.enabled
+                                    ? '<button class="btn btn-warning btn-sm" onclick="toggleConfig(' + c.id + ', false)">停止</button>'
+                                    : '<button class="btn btn-success btn-sm" onclick="toggleConfig(' + c.id + ', true)">启动</button>') +
+                            '</td>' +
+                        '</tr>';
+                    }).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">暂无VPN配置</td></tr>';
+                }
+            });
+    }
+
+    // ============================================================
+    // 弹窗
+    // ============================================================
+
+    function showModal(title, content) {
+        let overlay = document.getElementById('config-modal');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'config-modal';
+            overlay.className = 'modal-overlay';
+            overlay.innerHTML =
+                '<div class="modal-content">' +
+                    '<h3 id="modal-title"></h3>' +
+                    '<pre id="modal-body"></pre>' +
+                    '<div class="modal-actions">' +
+                        '<button class="btn btn-secondary" onclick="copyModalContent()">复制</button>' +
+                        '<button class="btn btn-primary" onclick="closeModal()">关闭</button>' +
+                    '</div>' +
+                '</div>';
+            document.body.appendChild(overlay);
+        }
+        document.getElementById('modal-title').textContent = title;
+        document.getElementById('modal-body').textContent = content;
+        overlay.classList.add('active');
+    }
+
+    function closeModal() {
+        const overlay = document.getElementById('config-modal');
+        if (overlay) overlay.classList.remove('active');
+    }
+
+    function copyModalContent() {
+        const body = document.getElementById('modal-body');
+        if (body) {
+            navigator.clipboard.writeText(body.textContent).then(() => {
+                alert('已复制到剪贴板');
+            }).catch(() => {
+                // 降级方案
+                const range = document.createRange();
+                range.selectNodeContents(body);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+                document.execCommand('copy');
+                sel.removeAllRanges();
+                alert('已复制到剪贴板');
+            });
+        }
+    }
+
+    // 点击弹窗外部关闭
+    document.addEventListener('click', function(e) {
+        if (e.target.id === 'config-modal') closeModal();
+    });
+
+    // ============================================================
+    // 初始化
+    // ============================================================
+
+    loadStats();
+    loadConfigs();
+
+    // 定时刷新
+    setInterval(loadStats, 15000);
+    setInterval(loadConfigs, 30000);
+</script>
+{% endblock %}

@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+
+{% block title %}高可用管理{% endblock %}
+
+{% block content %}
+<!-- Status Dashboard -->
+<div class="stats-grid">
+    <div class="stat-card"><h3><i class="fas fa-server"></i> 本地角色</h3><div class="value" id="local-role">-</div></div>
+    <div class="stat-card"><h3><i class="fas fa-network-wired"></i> 对端状态</h3><div class="value" id="peer-status">-</div></div>
+    <div class="stat-card"><h3><i class="fas fa-globe"></i> VIP状态</h3><div class="value" id="vip-status">-</div></div>
+    <div class="stat-card"><h3><i class="fas fa-heartbeat"></i> 心跳状态</h3><div class="value" id="heartbeat-status">-</div></div>
+</div>
+
+<!-- Health Indicators -->
+<div class="health-bar" id="health-bar">
+    <div class="health-item"><span class="health-dot" id="dot-firewall"></span> 防火墙规则</div>
+    <div class="health-item"><span class="health-dot" id="dot-nat"></span> NAT规则</div>
+    <div class="health-item"><span class="health-dot" id="dot-vpn"></span> VPN隧道</div>
+    <div class="health-item"><span class="health-dot" id="dot-dhcp"></span> DHCP租约</div>
+    <div class="health-item"><span class="health-dot" id="dot-dns"></span> DNS缓存</div>
+</div>
+
+<!-- Configuration Form -->
+<div class="section">
+    <h3><i class="fas fa-cog"></i> HA配置</h3>
+    <div class="config-form">
+        <div class="form-row">
+            <div class="form-group">
+                <label>HA模式</label>
+                <select id="ha-mode">
+                    <option value="active-passive">主备模式 (Active-Passive)</option>
+                    <option value="active-active">双活模式 (Active-Active)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>对端IP</label>
+                <input type="text" id="peer-ip" placeholder="192.168.1.2">
+            </div>
+            <div class="form-group">
+                <label>虚拟IP (VIP)</label>
+                <input type="text" id="vip" placeholder="192.168.1.254">
+            </div>
+            <div class="form-group">
+                <label>绑定接口</label>
+                <input type="text" id="ha-interface" placeholder="eth0">
+            </div>
+            <div class="form-group" style="display:flex;align-items:flex-end;">
+                <button class="btn btn-primary" onclick="configureHA()">保存配置</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Control Buttons -->
+<div class="section">
+    <h3><i class="fas fa-sliders-h"></i> 控制面板</h3>
+    <div class="control-btns">
+        <button class="btn btn-success" onclick="startHA()"><i class="fas fa-play"></i> 启动HA</button>
+        <button class="btn btn-danger" onclick="stopHA()"><i class="fas fa-stop"></i> 停止HA</button>
+        <button class="btn btn-warning" onclick="forceFailover()"><i class="fas fa-exchange-alt"></i> 强制故障切换</button>
+        <button class="btn btn-primary" onclick="syncConfig()"><i class="fas fa-sync-alt"></i> 同步配置</button>
+        <button class="btn btn-outline" id="maintenance-btn" onclick="toggleMaintenance()">
+            <i class="fas fa-tools"></i> <span id="maintenance-label">启用维护模式</span>
+        </button>
+    </div>
+</div>
+
+<!-- Failover History -->
+<div class="section">
+    <h3><i class="fas fa-history"></i> 故障切换历史</h3>
+    <table class="data-table">
+        <thead>
+            <tr><th>时间</th><th>事件类型</th><th>源节点</th><th>目标节点</th><th>原因</th><th>状态</th></tr>
+        </thead>
+        <tbody id="history-tbody">
+            <tr><td colspan="6" style="text-align:center;color:var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:15px;margin-bottom:20px;}
+.stat-card h3 i{margin-right:5px;}
+.health-bar{display:flex;gap:20px;padding:15px 20px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;margin-bottom:20px;flex-wrap:wrap;}
+.health-item{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text);}
+.health-dot{width:10px;height:10px;border-radius:50%;background:#94a3b8;}
+.health-dot.ok{background:#86efac;}
+.health-dot.fail{background:#fca5a5;}
+.section{margin-bottom:25px;}
+.section h3{color:var(--primary);margin-bottom:15px;font-size:16px;}
+.config-form{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:20px;}
+.form-row{display:flex;gap:15px;flex-wrap:wrap;}
+.form-group{flex:1;min-width:160px;}
+.form-group label{display:block;color:var(--text-muted);font-size:13px;margin-bottom:5px;}
+.form-group input,.form-group select{width:100%;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:14px;box-sizing:border-box;}
+.form-group input:focus,.form-group select:focus{outline:none;border-color:var(--primary);}
+.control-btns{display:flex;gap:10px;flex-wrap:wrap;}
+.data-table{width:100%;border-collapse:collapse;}
+.data-table th,.data-table td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border);font-size:14px;}
+.data-table th{color:var(--text-muted);font-weight:600;font-size:13px;}
+.data-table tr:hover{background:rgba(37,99,235,.05);}
+.btn{padding:8px 18px;border:none;border-radius:4px;cursor:pointer;font-size:14px;font-weight:500;transition:opacity .2s;}
+.btn:hover{opacity:.85;}
+.btn i{margin-right:5px;}
+.btn-primary{background:var(--primary);color:#fff;}
+.btn-danger{background:#ef4444;color:#fff;}
+.btn-success{background:#22c55e;color:#fff;}
+.btn-warning{background:#f59e0b;color:#fff;}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text-muted);}
+.btn-outline:hover{border-color:var(--primary);color:var(--primary);}
+.tag{display:inline-block;padding:2px 8px;border-radius:3px;font-size:12px;font-weight:600;}
+.tag-success{background:rgba(134,239,172,.2);color:#86efac;}
+.tag-fail{background:rgba(252,165,165,.2);color:#fca5a5;}
+.tag-warning{background:rgba(252,211,77,.2);color:#fcd34d;}
+.tag-info{background:rgba(147,197,253,.2);color:#93c5fd;}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function loadStatus() {
+    haFetch('/ha/api/status').then(function(data) {
+        if (data.status !== 'ok') return;
+        var d = data.data;
+        document.getElementById('local-role').textContent = d.role || d.node_state || '-';
+        document.getElementById('peer-status').textContent = d.peer_alive ? '在线' : '离线';
+        document.getElementById('vip-status').textContent = d.vip_active ? '已激活' : '未激活';
+        document.getElementById('heartbeat-status').textContent = d.peer_alive ? '正常' : '中断';
+        if (d.mode) document.getElementById('ha-mode').value = d.mode;
+        if (d.peer_ip) document.getElementById('peer-ip').value = d.peer_ip;
+        if (d.vip) document.getElementById('vip').value = d.vip;
+        if (d.interface) document.getElementById('ha-interface').value = d.interface;
+        var mBtn = document.getElementById('maintenance-label');
+        if (d.maintenance_mode) { mBtn.textContent = '禁用维护模式'; }
+        else { mBtn.textContent = '启用维护模式'; }
+    }).catch(function() {});
+}
+
+function loadHealth() {
+    haFetch('/ha/api/health').then(function(data) {
+        if (data.status !== 'ok') return;
+        var d = data.data;
+        var checks = d.checks || d.details || {};
+        setDot('dot-firewall', checks.firewall_rules);
+        setDot('dot-nat', checks.nat_rules);
+        setDot('dot-vpn', checks.vpn_tunnels);
+        setDot('dot-dhcp', checks.dhcp_leases);
+        setDot('dot-dns', checks.dns_cache);
+    }).catch(function() {});
+}
+
+function setDot(id, val) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.className = 'health-dot ' + (val ? 'ok' : 'fail');
+}
+
+function configureHA() {
+    var mode = document.getElementById('ha-mode').value;
+    var peer_ip = document.getElementById('peer-ip').value.trim();
+    var vip = document.getElementById('vip').value.trim();
+    var interface = document.getElementById('ha-interface').value.trim();
+    if (!peer_ip) { showToast('请输入对端IP', 'warning'); return; }
+    haFetch('/ha/api/configure', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mode:mode,peer_ip:peer_ip,vip:vip,interface:interface}) })
+    .then(function(data) { if(data.status==='ok'){showToast('配置已保存');loadStatus();}else{showToast(data.message,'error');} })
+    .catch(function(e) { showToast('请求失败: ' + e.message, 'error'); });
+}
+
+function showToast(msg, type) {
+    var t = document.createElement('div');
+    t.style.cssText = 'position:fixed;top:20px;right:20px;padding:12px 20px;border-radius:6px;color:#fff;font-size:14px;z-index:9999;opacity:0;transition:opacity 0.3s;';
+    t.style.background = type === 'error' ? '#dc2626' : type === 'warning' ? '#f59e0b' : '#16a34a';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    requestAnimationFrame(function() { t.style.opacity = '1'; });
+    setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.remove(); }, 300); }, 3000);
+}
+
+function haFetch(url, opts) {
+    return fetch(url, opts)
+        .then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        });
+}
+
+function startHA() {
+    var btn = event.target.closest('button');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 启动中...';
+    haFetch('/ha/api/start', { method:'POST' })
+    .then(function(data) {
+        if (data.status === 'ok') { showToast('HA已启动'); loadStatus(); }
+        else { showToast(data.message || '启动失败', 'error'); }
+    })
+    .catch(function(e) { showToast('请求失败: ' + e.message, 'error'); })
+    .finally(function() { btn.disabled = false; btn.innerHTML = '<i class="fas fa-play"></i> 启动HA'; });
+}
+
+function stopHA() {
+    if (!confirm('确定要停止HA服务吗？')) return;
+    haFetch('/ha/api/stop', { method:'POST' })
+    .then(function(data) {
+        if (data.status === 'ok') { showToast('HA已停止'); loadStatus(); }
+        else { showToast(data.message || '停止失败', 'error'); }
+    })
+    .catch(function(e) { showToast('请求失败: ' + e.message, 'error'); });
+}
+
+function forceFailover() {
+    if (!confirm('确定要执行强制故障切换吗？此操作将导致服务中断。')) return;
+    haFetch('/ha/api/failover', { method:'POST' })
+    .then(function(data) {
+        if (data.status === 'ok') { showToast('故障切换已执行'); loadStatus(); loadHistory(); }
+        else { showToast(data.message || '故障切换失败', 'error'); }
+    })
+    .catch(function(e) { showToast('请求失败: ' + e.message, 'error'); });
+}
+
+function syncConfig() {
+    haFetch('/ha/api/sync', { method:'POST' })
+    .then(function(data) {
+        if (data.status === 'ok') { showToast('配置同步完成'); }
+        else { showToast(data.message || '同步失败', 'error'); }
+    })
+    .catch(function(e) { showToast('请求失败: ' + e.message, 'error'); });
+}
+
+function toggleMaintenance() {
+    var label = document.getElementById('maintenance-label').textContent;
+    var enabled = label.includes('启用');
+    haFetch('/ha/api/maintenance', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({enabled: enabled}) })
+    .then(function(data) {
+        if (data.status === 'ok') { loadStatus(); }
+        else { showToast(data.message || '操作失败', 'error'); }
+    })
+    .catch(function(e) { showToast('请求失败: ' + e.message, 'error'); });
+}
+
+function loadHistory() {
+    fetch('/ha/api/history').then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => {
+        const tbody = document.getElementById('history-tbody');
+        if (data.status === 'ok' && data.data.history.length > 0) {
+            tbody.innerHTML = data.data.history.map(h => {
+                const statusClass = h.success !== false ? 'tag-success' : 'tag-fail';
+                return `<tr>
+                    <td>${h.timestamp||'-'}</td><td>${h.event_type||h.type||'-'}</td>
+                    <td>${h.source||'-'}</td><td>${h.target||'-'}</td>
+                    <td>${h.reason||'-'}</td>
+                    <td><span class="tag ${statusClass}">${h.success!==false?'成功':'失败'}</span></td></tr>`;
+            }).join('');
+        } else { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">暂无故障切换记录</td></tr>'; }
+    }).catch(()=>{});
+}
+
+loadStatus(); loadHealth(); loadHistory();
+setInterval(loadStatus, 10000);
+setInterval(loadHealth, 15000);
+</script>
+{% endblock %}

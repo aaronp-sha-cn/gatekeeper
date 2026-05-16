@@ -1,0 +1,347 @@
+{% extends "base.html" %}
+
+{% block title %}内容安全{% endblock %}
+
+{% block content %}
+<!-- Tab Navigation -->
+<div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('antivirus', event)"><i class="fas fa-virus"></i> 防病毒</button>
+    <button class="tab-btn" onclick="switchTab('spam', event)"><i class="fas fa-envelope-open-text"></i> 反垃圾邮件</button>
+    <button class="tab-btn" onclick="switchTab('urlfilter', event)"><i class="fas fa-filter"></i> URL过滤</button>
+    <button class="tab-btn" onclick="switchTab('dlp', event)"><i class="fas fa-user-shield"></i> 数据防泄漏(DLP)</button>
+</div>
+
+<!-- Tab: Antivirus -->
+<div class="tab-panel" id="tab-antivirus">
+    <div class="stats-grid">
+        <div class="stat-card"><h3>已扫描文件</h3><div class="value" id="av-scanned">-</div></div>
+        <div class="stat-card blocked"><h3>发现威胁</h3><div class="value" id="av-threats">-</div></div>
+        <div class="stat-card enabled"><h3>隔离文件</h3><div class="value" id="av-quarantined">-</div></div>
+        <div class="stat-card rate"><h3>签名版本</h3><div class="value" id="av-sig-ver">-</div></div>
+    </div>
+    <div class="section">
+        <h3><i class="fas fa-upload"></i> 文件扫描</h3>
+        <div class="upload-area">
+            <input type="file" id="scan-file" style="display:none" onchange="scanFile()">
+            <button class="btn btn-primary" onclick="document.getElementById('scan-file').click()"><i class="fas fa-file-upload"></i> 选择文件扫描</button>
+            <span id="scan-result" style="margin-left:15px;font-size:14px;"></span>
+        </div>
+    </div>
+    <div class="section">
+        <div class="section-header">
+            <h3><i class="fas fa-lock"></i> 隔离区</h3>
+            <button class="btn btn-outline btn-sm" onclick="updateSignatures()"><i class="fas fa-sync-alt"></i> 更新签名</button>
+        </div>
+        <table class="data-table">
+            <thead><tr><th>文件名</th><th>威胁类型</th><th>隔离时间</th><th>操作</th></tr></thead>
+            <tbody id="quarantine-tbody">
+                <tr><td colspan="4" style="text-align:center;color:var(--text-muted);">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Tab: Anti-Spam -->
+<div class="tab-panel" id="tab-spam" style="display:none;">
+    <div class="stats-grid">
+        <div class="stat-card"><h3>已检查</h3><div class="value" id="spam-checked">-</div></div>
+        <div class="stat-card blocked"><h3>垃圾邮件</h3><div class="value" id="spam-detected">-</div></div>
+        <div class="stat-card enabled"><h3>正常邮件</h3><div class="value" id="spam-passed">-</div></div>
+    </div>
+    <div class="section">
+        <h3><i class="fas fa-envelope"></i> 邮件检查</h3>
+        <div class="form-group"><label>邮件头 (JSON格式)</label>
+            <textarea id="spam-headers" rows="4" placeholder='{"From": "test@example.com", "Subject": "Test"}'></textarea></div>
+        <div class="form-group"><label>邮件正文</label>
+            <textarea id="spam-body" rows="4" placeholder="输入邮件正文内容..."></textarea></div>
+        <button class="btn btn-primary" onclick="checkEmail()"><i class="fas fa-search"></i> 检查邮件</button>
+        <div id="spam-result" style="margin-top:15px;"></div>
+    </div>
+</div>
+
+<!-- Tab: URL Filtering -->
+<div class="tab-panel" id="tab-urlfilter" style="display:none;">
+    <div class="stats-grid">
+        <div class="stat-card"><h3>已检查URL</h3><div class="value" id="url-checked">-</div></div>
+        <div class="stat-card blocked"><h3>已拦截</h3><div class="value" id="url-blocked">-</div></div>
+        <div class="stat-card enabled"><h3>已放行</h3><div class="value" id="url-allowed">-</div></div>
+    </div>
+    <div class="section">
+        <h3><i class="fas fa-search"></i> URL检查</h3>
+        <div class="form-row">
+            <input type="text" id="url-check-input" placeholder="输入URL，如 https://example.com" style="flex:1;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);">
+            <button class="btn btn-primary" onclick="checkUrl()">检查</button>
+        </div>
+        <div id="url-check-result" style="margin-top:10px;font-size:14px;"></div>
+    </div>
+    <div class="section">
+        <h3><i class="fas fa-list"></i> 黑名单/白名单管理</h3>
+        <div class="form-row">
+            <input type="text" id="bl-url" placeholder="URL" style="flex:2;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);">
+            <input type="text" id="bl-category" placeholder="分类(可选)" style="flex:1;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);">
+            <button class="btn btn-danger btn-sm" onclick="addBlacklist()">加黑名单</button>
+            <button class="btn btn-success btn-sm" onclick="addWhitelist()">加白名单</button>
+        </div>
+    </div>
+    <div class="section">
+        <h3><i class="fas fa-tags"></i> URL分类列表</h3>
+        <div id="url-categories" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+    </div>
+</div>
+
+<!-- Tab: DLP -->
+<div class="tab-panel" id="tab-dlp" style="display:none;">
+    <div class="section">
+        <h3><i class="fas fa-search"></i> 内容扫描</h3>
+        <div class="form-group"><label>待扫描内容</label>
+            <textarea id="dlp-content" rows="5" placeholder="粘贴需要扫描的内容..."></textarea></div>
+        <button class="btn btn-primary" onclick="dlpScan()"><i class="fas fa-search"></i> 扫描</button>
+        <div id="dlp-scan-result" style="margin-top:15px;"></div>
+    </div>
+    <div class="section">
+        <h3><i class="fas fa-plus-circle"></i> 添加自定义模式</h3>
+        <div class="form-row">
+            <input type="text" id="dlp-name" placeholder="模式名称" style="flex:1;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);">
+            <input type="text" id="dlp-pattern" placeholder="正则表达式" style="flex:2;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);">
+            <select id="dlp-severity" style="padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);">
+                <option value="low">低</option><option value="medium" selected>中</option><option value="high">高</option><option value="critical">严重</option>
+            </select>
+            <button class="btn btn-primary btn-sm" onclick="addDlpPattern()">添加</button>
+        </div>
+    </div>
+    <div class="section">
+        <h3><i class="fas fa-history"></i> DLP事件日志</h3>
+        <table class="data-table">
+            <thead><tr><th>时间</th><th>类型</th><th>严重程度</th><th>匹配内容</th></tr></thead>
+            <tbody id="dlp-events-tbody">
+                <tr><td colspan="4" style="text-align:center;color:var(--text-muted);">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.tab-bar{display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border);}
+.tab-btn{padding:10px 18px;background:transparent;border:1px solid transparent;border-bottom:none;color:var(--text-muted);cursor:pointer;font-size:14px;border-radius:6px 6px 0 0;transition:all .2s;}
+.tab-btn:hover{color:var(--text);background:rgba(37,99,235,.05);}
+.tab-btn.active{color:var(--primary);background:var(--bg-card);border-color:var(--border);font-weight:600;}
+.tab-panel{background:var(--bg-card);border:1px solid var(--border);border-radius:0 6px 6px 6px;padding:20px;}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:15px;margin-bottom:20px;}
+.stat-card.enabled .value{color:#86efac;}
+.stat-card.rate .value{color:#fcd34d;}
+.section{margin-bottom:25px;}
+.section h3{color:var(--primary);margin-bottom:12px;font-size:16px;}
+.section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+.section-header h3{margin-bottom:0;}
+.form-group{margin-bottom:12px;}
+.form-group label{display:block;color:var(--text-muted);font-size:13px;margin-bottom:5px;}
+.form-group textarea{width:100%;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:14px;box-sizing:border-box;resize:vertical;font-family:monospace;}
+.form-group textarea:focus{outline:none;border-color:var(--primary);}
+.form-row{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;}
+.data-table{width:100%;border-collapse:collapse;}
+.data-table th,.data-table td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border);font-size:14px;}
+.data-table th{color:var(--text-muted);font-weight:600;font-size:13px;}
+.data-table tr:hover{background:rgba(37,99,235,.05);}
+.upload-area{display:flex;align-items:center;gap:10px;padding:15px;background:var(--bg);border:2px dashed var(--border);border-radius:6px;}
+.btn{padding:6px 14px;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:500;transition:opacity .2s;}
+.btn:hover{opacity:.85;}
+.btn-primary{background:var(--primary);color:#fff;}
+.btn-danger{background:#ef4444;color:#fff;}
+.btn-success{background:#22c55e;color:#fff;}
+.btn-sm{padding:4px 10px;font-size:12px;}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text-muted);}
+.btn-outline:hover{border-color:var(--primary);color:var(--primary);}
+.tag{display:inline-block;padding:2px 8px;border-radius:3px;font-size:12px;font-weight:600;}
+.tag-clean{background:rgba(134,239,172,.2);color:#86efac;}
+.tag-threat{background:rgba(252,165,165,.2);color:#fca5a5;}
+.tag-spam{background:rgba(252,165,165,.2);color:#fca5a5;}
+.tag-ham{background:rgba(134,239,172,.2);color:#86efac;}
+.tag-blocked{background:rgba(252,165,165,.2);color:#fca5a5;}
+.tag-allowed{background:rgba(134,239,172,.2);color:#86efac;}
+.cat-tag{display:inline-block;padding:4px 10px;background:rgba(37,99,235,.1);border:1px solid var(--border);border-radius:4px;font-size:13px;color:var(--text);}
+.result-box{padding:12px 16px;border-radius:4px;font-size:14px;margin-top:10px;}
+.result-box.pass{background:rgba(134,239,172,.1);border:1px solid rgba(134,239,172,.3);color:#86efac;}
+.result-box.fail{background:rgba(252,165,165,.1);border:1px solid rgba(252,165,165,.3);color:#fca5a5;}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function switchTab(name, event) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).style.display = 'block';
+    if (event && event.currentTarget) event.currentTarget.classList.add('active');
+    if (name === 'spam') loadSpamStats();
+    if (name === 'urlfilter') { loadUrlStats(); loadUrlCategories(); }
+    if (name === 'dlp') loadDlpEvents();
+}
+
+// ---- Antivirus ----
+function scanFile() {
+    const file = document.getElementById('scan-file').files[0];
+    if (!file) return;
+    const fd = new FormData(); fd.append('file', file);
+    const res = document.getElementById('scan-result');
+    res.textContent = '扫描中...'; res.style.color = 'var(--text-muted)';
+    fetch('/content-security/api/scan/file', { method:'POST', body:fd })
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => {
+        if (data.status === 'ok') {
+            const d = data.data;
+            if (d.threat) { res.textContent = '发现威胁: ' + d.threat; res.style.color = '#fca5a5'; }
+            else { res.textContent = '文件安全，未发现威胁'; res.style.color = '#86efac'; }
+            loadQuarantine();
+        } else { res.textContent = '扫描失败: ' + data.message; res.style.color = '#fca5a5'; }
+    }).catch(()=>{ res.textContent = '请求失败'; });
+}
+
+function loadQuarantine() {
+    fetch('/content-security/api/quarantine').then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => {
+        const tbody = document.getElementById('quarantine-tbody');
+        if (data.status === 'ok' && data.data.items.length > 0) {
+            tbody.innerHTML = data.data.items.map(i => `<tr>
+                <td>${i.filename||i.name||'-'}</td><td>${i.threat||'-'}</td><td>${i.quarantined_at||'-'}</td>
+                <td><button class="btn btn-sm btn-success" onclick="restoreItem('${i.id}')">恢复</button></td></tr>`).join('');
+        } else { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">隔离区为空</td></tr>'; }
+    }).catch(()=>{});
+}
+
+function restoreItem(id) {
+    fetch('/content-security/api/quarantine/'+id+'/restore', { method:'POST' })
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => { if(data.status==='ok'){alert('已恢复');loadQuarantine();}else{alert(data.message);} }).catch(()=>{});
+}
+
+function updateSignatures() {
+    fetch('/content-security/api/antivirus/update', { method:'POST' })
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => { alert(data.status==='ok'?'签名更新完成':('更新失败: '+data.message)); }).catch(()=>{});
+}
+
+// ---- Anti-Spam ----
+function checkEmail() {
+    let headers = {}; const hText = document.getElementById('spam-headers').value.trim();
+    if (hText) { try { headers = JSON.parse(hText); } catch(e) { alert('邮件头JSON格式错误'); return; } }
+    const body = document.getElementById('spam-body').value;
+    fetch('/content-security/api/email/check', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({headers,body}) })
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => {
+        const el = document.getElementById('spam-result');
+        if (data.status === 'ok') {
+            const d = data.data; const isSpam = d.is_spam;
+            el.innerHTML = `<div class="result-box ${isSpam?'fail':'pass'}">
+                ${isSpam?'<strong>垃圾邮件</strong>':'<strong>正常邮件</strong>'} | 垃圾评分: ${d.spam_score||0} | 原因: ${d.reasons?d.reasons.join(', '):'-'}</div>`;
+            loadSpamStats();
+        } else { el.innerHTML = '<div class="result-box fail">检查失败: '+data.message+'</div>'; }
+    }).catch(()=>{});
+}
+
+function loadSpamStats() {
+    fetch('/content-security/api/spam/stats').then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => {
+        if (data.status !== 'ok') return;
+        const d = data.data;
+        document.getElementById('spam-checked').textContent = d.total_checked||0;
+        document.getElementById('spam-detected').textContent = d.spam_detected||0;
+        document.getElementById('spam-passed').textContent = d.ham_passed||0;
+    }).catch(()=>{});
+}
+
+// ---- URL Filtering ----
+function checkUrl() {
+    const url = document.getElementById('url-check-input').value.trim();
+    if (!url) return;
+    const res = document.getElementById('url-check-result');
+    res.textContent = '检查中...'; res.style.color = 'var(--text-muted)';
+    fetch('/content-security/api/url/check', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url}) })
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => {
+        if (data.status === 'ok') {
+            const d = data.data;
+            res.innerHTML = `<span class="tag ${d.blocked?'tag-blocked':'tag-allowed'}">${d.blocked?'已拦截':'放行'}</span> 分类: ${d.category||'-'} | 风险: ${d.risk||'-'}`;
+        } else { res.textContent = '检查失败'; }
+    }).catch(()=>{});
+}
+
+function addBlacklist() {
+    const url = document.getElementById('bl-url').value.trim();
+    const cat = document.getElementById('bl-category').value.trim();
+    if (!url) { alert('请输入URL'); return; }
+    fetch('/content-security/api/url/blacklist', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url,category:cat}) })
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => { if(data.status==='ok'){alert('已添加');document.getElementById('bl-url').value='';document.getElementById('bl-category').value='';}else{alert(data.message);} }).catch(()=>{});
+}
+
+function addWhitelist() {
+    const url = document.getElementById('bl-url').value.trim();
+    if (!url) { alert('请输入URL'); return; }
+    fetch('/content-security/api/url/whitelist', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url}) })
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => { if(data.status==='ok'){alert('已添加');document.getElementById('bl-url').value='';}else{alert(data.message);} }).catch(()=>{});
+}
+
+function loadUrlStats() {
+    fetch('/content-security/api/url/stats').then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => {
+        if (data.status !== 'ok') return;
+        const d = data.data;
+        document.getElementById('url-checked').textContent = d.total_checked||0;
+        document.getElementById('url-blocked').textContent = d.blocked||0;
+        document.getElementById('url-allowed').textContent = d.allowed||0;
+    }).catch(()=>{});
+}
+
+function loadUrlCategories() {
+    fetch('/content-security/api/url/categories').then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => {
+        if (data.status !== 'ok') return;
+        document.getElementById('url-categories').innerHTML = data.data.categories.map(c =>
+            `<span class="cat-tag">${c.name||c.id}</span>`).join('');
+    }).catch(()=>{});
+}
+
+// ---- DLP ----
+function dlpScan() {
+    const content = document.getElementById('dlp-content').value;
+    if (!content) { alert('请输入待扫描内容'); return; }
+    fetch('/content-security/api/dlp/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({content}) })
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => {
+        const el = document.getElementById('dlp-scan-result');
+        if (data.status === 'ok') {
+            const d = data.data;
+            if (d.violations && d.violations.length > 0) {
+                el.innerHTML = `<div class="result-box fail"><strong>发现 ${d.violations.length} 个敏感数据泄露风险</strong><br>` +
+                    d.violations.map(v => `[${v.severity}] ${v.name}: ${v.matched||'-'}`).join('<br>') + '</div>';
+            } else { el.innerHTML = '<div class="result-box pass">未发现敏感数据泄露风险</div>'; }
+        } else { el.innerHTML = '<div class="result-box fail">扫描失败</div>'; }
+    }).catch(()=>{});
+}
+
+function addDlpPattern() {
+    const name = document.getElementById('dlp-name').value.trim();
+    const pattern = document.getElementById('dlp-pattern').value.trim();
+    const severity = document.getElementById('dlp-severity').value;
+    if (!name || !pattern) { alert('名称和模式不能为空'); return; }
+    fetch('/content-security/api/dlp/pattern', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name,pattern,severity}) })
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => { if(data.status==='ok'){alert('已添加');document.getElementById('dlp-name').value='';document.getElementById('dlp-pattern').value='';}else{alert(data.message);} }).catch(()=>{});
+}
+
+function loadDlpEvents() {
+    fetch('/content-security/api/dlp/events').then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => {
+        const tbody = document.getElementById('dlp-events-tbody');
+        if (data.status === 'ok' && data.data.events.length > 0) {
+            tbody.innerHTML = data.data.events.slice(0, 50).map(e => `<tr>
+                <td>${e.timestamp||'-'}</td><td>${e.type||e.pattern_name||'-'}</td>
+                <td><span class="tag tag-${e.severity||'medium'}">${e.severity||'medium'}</span></td>
+                <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.matched||e.content_preview||'-'}</td></tr>`).join('');
+        } else { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">暂无DLP事件</td></tr>'; }
+    }).catch(()=>{});
+}
+
+// Init
+loadQuarantine();
+</script>
+{% endblock %}

@@ -1,0 +1,603 @@
+{% extends "base.html" %}
+
+{% block title %}零信任架构{% endblock %}
+
+{% block content %}
+<!-- 统计卡片 -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>活跃策略数</h3>
+        <div class="value" id="stat-policies">-</div>
+    </div>
+    <div class="stat-card">
+        <h3>今日评估次数</h3>
+        <div class="value" id="stat-evaluations">-</div>
+    </div>
+    <div class="stat-card blocked">
+        <h3>阻断次数</h3>
+        <div class="value" id="stat-blocked">-</div>
+    </div>
+    <div class="stat-card enabled">
+        <h3>高信任用户数</h3>
+        <div class="value" id="stat-trusted-users">-</div>
+    </div>
+</div>
+
+<!-- 策略管理 -->
+<div class="section">
+    <h2>策略管理</h2>
+
+    <!-- 添加策略表单 -->
+    <div class="add-form">
+        <h3>添加策略</h3>
+        <div class="form-row">
+            <div class="form-group">
+                <label>策略名称</label>
+                <input type="text" id="policy-name" placeholder="输入策略名称">
+            </div>
+            <div class="form-group">
+                <label>信任阈值</label>
+                <input type="number" id="policy-threshold" placeholder="0-100" min="0" max="100" value="60">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>描述</label>
+                <input type="text" id="policy-desc" placeholder="策略描述（可选）">
+            </div>
+            <div class="form-group">
+                <label>适用用户组</label>
+                <input type="text" id="policy-groups" placeholder="如 all, developers, admins">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>适用资源</label>
+                <input type="text" id="policy-resources" placeholder="如 *, /admin/*, db.internal:3306">
+            </div>
+            <div class="form-group">
+                <label>动作</label>
+                <select id="policy-action">
+                    <option value="allow">允许 (allow)</option>
+                    <option value="deny">拒绝 (deny)</option>
+                    <option value="mfa">要求MFA (mfa)</option>
+                    <option value="log_only">仅记录 (log_only)</option>
+                </select>
+            </div>
+            <div class="form-group" style="display: flex; align-items: flex-end;">
+                <button class="btn btn-primary" onclick="addPolicy()">添加策略</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 策略列表 -->
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>名称</th>
+                <th>信任阈值</th>
+                <th>状态</th>
+                <th>动作</th>
+            </tr>
+        </thead>
+        <tbody id="policies-tbody">
+            <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- 信任评估 -->
+<div class="section">
+    <h2>信任评估</h2>
+    <div class="eval-panel">
+        <div class="form-row">
+            <div class="form-group">
+                <label>用户名</label>
+                <input type="text" id="eval-user" placeholder="输入用户名">
+            </div>
+            <div class="form-group">
+                <label>设备ID</label>
+                <input type="text" id="eval-device" placeholder="输入设备标识（可选）">
+            </div>
+            <div class="form-group">
+                <label>源IP</label>
+                <input type="text" id="eval-ip" placeholder="如 192.168.1.100">
+            </div>
+            <div class="form-group" style="display: flex; align-items: flex-end;">
+                <button class="btn btn-primary" onclick="evaluateTrust()">评估</button>
+            </div>
+        </div>
+        <div id="eval-result" class="eval-result"></div>
+    </div>
+</div>
+
+<!-- 访问日志 -->
+<div class="section">
+    <h2>访问日志</h2>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>时间</th>
+                <th>用户</th>
+                <th>源IP</th>
+                <th>设备</th>
+                <th>资源</th>
+                <th>信任分数</th>
+                <th>动作</th>
+            </tr>
+        </thead>
+        <tbody id="access-logs">
+            <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 统计卡片 */
+    .stat-card.enabled .value { color: #86efac; }
+
+    /* 区块 */
+    .section { margin-bottom: 30px; }
+    .section h2 { color: var(--primary); margin-bottom: 15px; font-size: 18px; }
+    .section h3 { color: var(--text); margin-bottom: 12px; font-size: 15px; }
+
+    /* 表单 */
+    .form-row {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+    }
+    .form-group {
+        flex: 1;
+        min-width: 180px;
+    }
+    .form-group label {
+        display: block;
+        color: var(--text-muted);
+        font-size: 13px;
+        margin-bottom: 5px;
+    }
+    .form-group input,
+    .form-group select {
+        width: 100%;
+        padding: 8px 10px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-size: 14px;
+        box-sizing: border-box;
+    }
+    .form-group input:focus,
+    .form-group select:focus {
+        outline: none;
+        border-color: var(--primary);
+    }
+
+    /* 添加表单 */
+    .add-form {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    /* 评估面板 */
+    .eval-panel {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 20px;
+    }
+    .eval-result {
+        margin-top: 12px;
+        padding: 12px;
+        border-radius: 4px;
+        font-size: 14px;
+        display: none;
+    }
+    .eval-result.pass {
+        display: block;
+        background: rgba(134, 239, 172, 0.1);
+        border: 1px solid rgba(134, 239, 172, 0.3);
+        color: #86efac;
+    }
+    .eval-result.fail {
+        display: block;
+        background: rgba(252, 165, 165, 0.1);
+        border: 1px solid rgba(252, 165, 165, 0.3);
+        color: #fca5a5;
+    }
+    .eval-result.info {
+        display: block;
+        background: rgba(147, 197, 253, 0.1);
+        border: 1px solid rgba(147, 197, 253, 0.3);
+        color: #93c5fd;
+    }
+
+    /* 数据表格 */
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .data-table th, .data-table td {
+        padding: 10px 12px;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+        font-size: 14px;
+    }
+    .data-table th {
+        color: var(--text-muted);
+        font-weight: 600;
+        font-size: 13px;
+    }
+    .data-table tr:hover {
+        background: rgba(37, 99, 235, 0.05);
+    }
+
+    /* 标签 */
+    .tag {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .tag-enabled { background: rgba(134, 239, 172, 0.2); color: #86efac; }
+    .tag-disabled { background: rgba(148, 163, 184, 0.2); color: #94a3b8; }
+    .tag-allow { background: rgba(134, 239, 172, 0.2); color: #86efac; }
+    .tag-deny { background: rgba(252, 165, 165, 0.2); color: #fca5a5; }
+    .tag-mfa { background: rgba(252, 211, 77, 0.2); color: #fcd34d; }
+    .tag-log_only { background: rgba(147, 197, 253, 0.2); color: #93c5fd; }
+    .tag-high { background: rgba(134, 239, 172, 0.2); color: #86efac; }
+    .tag-medium { background: rgba(252, 211, 77, 0.2); color: #fcd34d; }
+    .tag-low { background: rgba(252, 165, 165, 0.2); color: #fca5a5; }
+
+    /* 操作按钮 */
+    .action-btns { display: flex; gap: 6px; }
+
+    /* 按钮 */
+    .btn {
+        padding: 6px 14px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+        transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-danger { background: #ef4444; color: #fff; }
+    .btn-sm { padding: 3px 10px; font-size: 12px; }
+    .btn-outline {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+    }
+    .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+
+    /* 信任分数 */
+    .trust-score {
+        font-weight: bold;
+        font-size: 14px;
+    }
+    .trust-score.high { color: #86efac; }
+    .trust-score.medium { color: #fcd34d; }
+    .trust-score.low { color: #fca5a5; }
+
+    /* Toast 通知 */
+    .toast-container {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 10000;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .toast {
+        padding: 10px 20px;
+        border-radius: 6px;
+        font-size: 14px;
+        color: #fff;
+        background: var(--primary);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .toast-success { background: #22c55e; }
+    .toast-error { background: #ef4444; }
+    .toast-warning { background: #f59e0b; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// ---- Toast 通知 ----
+    function showToast(message, type) {
+        type = type || 'info';
+        var container = document.getElementById('toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.className = 'toast-container';
+            container.id = 'toast-container';
+            document.body.appendChild(container);
+        }
+        var toast = document.createElement('div');
+        toast.className = 'toast toast-' + type;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(function() {
+            toast.style.opacity = '0';
+            toast.style.transition = 'opacity 0.3s ease';
+            setTimeout(function() { toast.remove(); }, 300);
+        }, 3000);
+    }
+
+    // ---- 加载状态 ----
+    function loadStatus() {
+        fetch('/zta/api/config')
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+                if (data.status === 'ok') {
+                    // 配置加载成功，可用于后续初始化
+                }
+            })
+            .catch(function(e) { console.error('加载配置失败:', e); });
+    }
+
+    // ---- 加载统计 ----
+    function loadStats() {
+        fetch('/zta/api/stats')
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+                if (data.status === 'ok') {
+                    var d = data.data;
+                    document.getElementById('stat-policies').textContent = d.active_policies || 0;
+                    document.getElementById('stat-evaluations').textContent = d.today_evaluations || 0;
+                    document.getElementById('stat-blocked').textContent = d.blocked_count || 0;
+                    document.getElementById('stat-trusted-users').textContent = d.high_trust_users || 0;
+                }
+            })
+            .catch(function(e) { console.error('加载统计失败:', e); });
+    }
+
+    // ---- 加载策略列表 ----
+    function loadPolicies() {
+        fetch('/zta/api/policies')
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+                var tbody = document.getElementById('policies-tbody');
+                if (data.status === 'ok' && data.data.policies && data.data.policies.length > 0) {
+                    tbody.innerHTML = data.data.policies.map(function(p) {
+                        var statusClass = p.enabled !== false ? 'tag-enabled' : 'tag-disabled';
+                        var statusText = p.enabled !== false ? '启用' : '禁用';
+                        return '<tr>' +
+                            '<td>' + p.id + '</td>' +
+                            '<td>' + (p.name || '-') + '</td>' +
+                            '<td>' + (p.trust_threshold != null ? p.trust_threshold : '-') + '</td>' +
+                            '<td><span class="tag ' + statusClass + '">' + statusText + '</span></td>' +
+                            '<td>' +
+                                '<div class="action-btns">' +
+                                    '<button class="btn btn-sm btn-outline" onclick="editPolicy(' + p.id + ')">编辑</button>' +
+                                    '<button class="btn btn-sm btn-danger" onclick="deletePolicy(' + p.id + ')">删除</button>' +
+                                '</div>' +
+                            '</td>' +
+                            '</tr>';
+                    }).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">暂无策略</td></tr>';
+                }
+            })
+            .catch(function(e) { console.error('加载策略失败:', e); });
+    }
+
+    // ---- 添加策略 ----
+    function addPolicy() {
+        var name = document.getElementById('policy-name').value.trim();
+        var desc = document.getElementById('policy-desc').value.trim();
+        var threshold = parseInt(document.getElementById('policy-threshold').value);
+        var groups = document.getElementById('policy-groups').value.trim();
+        var resources = document.getElementById('policy-resources').value.trim();
+        var action = document.getElementById('policy-action').value;
+
+        if (!name) { showToast('请输入策略名称', 'warning'); return; }
+        if (isNaN(threshold) || threshold < 0 || threshold > 100) { showToast('信任阈值必须在 0-100 之间', 'warning'); return; }
+
+        fetch('/zta/api/policies', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                name: name,
+                description: desc,
+                trust_threshold: threshold,
+                user_groups: groups,
+                resources: resources,
+                action: action
+            })
+        })
+        .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                showToast('策略添加成功', 'success');
+                document.getElementById('policy-name').value = '';
+                document.getElementById('policy-desc').value = '';
+                document.getElementById('policy-groups').value = '';
+                document.getElementById('policy-resources').value = '';
+                loadPolicies();
+                loadStats();
+            } else {
+                showToast('添加失败: ' + (data.message || '未知错误'), 'error');
+            }
+        })
+        .catch(function(e) { showToast('请求失败: ' + e.message, 'error'); });
+    }
+
+    // ---- 编辑策略 ----
+    function editPolicy(policyId) {
+        var newName = prompt('请输入新的策略名称:');
+        if (newName === null) return;
+        var newThreshold = prompt('请输入新的信任阈值 (0-100):');
+        if (newThreshold === null) return;
+
+        fetch('/zta/api/policies/' + policyId, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                name: newName.trim(),
+                trust_threshold: parseInt(newThreshold)
+            })
+        })
+        .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                showToast('策略已更新', 'success');
+                loadPolicies();
+            } else {
+                showToast('更新失败: ' + (data.message || '未知错误'), 'error');
+            }
+        })
+        .catch(function(e) { showToast('请求失败: ' + e.message, 'error'); });
+    }
+
+    // ---- 删除策略 ----
+    function deletePolicy(policyId) {
+        if (!confirm('确定要删除此策略吗？')) return;
+
+        fetch('/zta/api/policies/' + policyId, {
+            method: 'DELETE',
+            headers: {'Content-Type': 'application/json'}
+        })
+        .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                showToast('策略已删除', 'success');
+                loadPolicies();
+                loadStats();
+            } else {
+                showToast('删除失败: ' + (data.message || '未知错误'), 'error');
+            }
+        })
+        .catch(function(e) { showToast('请求失败: ' + e.message, 'error'); });
+    }
+
+    // ---- 信任评估 ----
+    function evaluateTrust() {
+        var user = document.getElementById('eval-user').value.trim();
+        var device = document.getElementById('eval-device').value.trim();
+        var ip = document.getElementById('eval-ip').value.trim();
+        var resultEl = document.getElementById('eval-result');
+
+        if (!user && !ip) { showToast('请输入用户名或源IP', 'warning'); return; }
+
+        resultEl.style.display = 'none';
+        resultEl.className = 'eval-result';
+
+        fetch('/zta/api/evaluate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ user: user, device: device, src_ip: ip })
+        })
+        .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                var d = data.data;
+                var score = d.trust_score != null ? d.trust_score : '-';
+                var scoreClass = 'high';
+                if (score < 40) scoreClass = 'low';
+                else if (score < 70) scoreClass = 'medium';
+
+                var actionMap = { allow: '允许', deny: '拒绝', mfa: '要求MFA', log_only: '仅记录' };
+                var actionText = actionMap[d.action] || d.action || '-';
+
+                resultEl.innerHTML =
+                    '<strong>评估结果</strong><br>' +
+                    '用户: ' + (d.user || '-') + '<br>' +
+                    '设备: ' + (d.device || '-') + '<br>' +
+                    '源IP: ' + (d.src_ip || '-') + '<br>' +
+                    '信任分数: <span class="trust-score ' + scoreClass + '">' + score + '</span><br>' +
+                    '建议动作: ' + actionText + '<br>' +
+                    '风险因素: ' + (d.risk_factors && d.risk_factors.length > 0 ? d.risk_factors.join(', ') : '无');
+                resultEl.className = 'eval-result info';
+            } else {
+                resultEl.innerHTML = '评估失败: ' + (data.message || '未知错误');
+                resultEl.className = 'eval-result fail';
+            }
+        })
+        .catch(function(e) {
+            resultEl.innerHTML = '请求失败: ' + e.message;
+            resultEl.className = 'eval-result fail';
+        });
+    }
+
+    // ---- 加载访问日志 ----
+    function loadLogs() {
+        fetch('/zta/api/logs?limit=50')
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+                var tbody = document.getElementById('access-logs');
+                if (data.status === 'ok' && data.data.logs && data.data.logs.length > 0) {
+                    tbody.innerHTML = data.data.logs.map(function(log) {
+                        var ts = log.timestamp ? new Date(log.timestamp).toLocaleString() : '-';
+                        var score = log.trust_score != null ? log.trust_score : '-';
+                        var scoreClass = 'high';
+                        if (score < 40) scoreClass = 'low';
+                        else if (score < 70) scoreClass = 'medium';
+
+                        var actionClass = 'tag-allow';
+                        var actionText = log.action || 'allow';
+                        if (actionText === 'deny' || actionText === 'blocked') {
+                            actionClass = 'tag-deny';
+                            actionText = '拒绝';
+                        } else if (actionText === 'mfa') {
+                            actionClass = 'tag-mfa';
+                            actionText = 'MFA';
+                        } else if (actionText === 'log_only') {
+                            actionClass = 'tag-log_only';
+                            actionText = '记录';
+                        } else {
+                            actionText = '允许';
+                        }
+
+                        return '<tr>' +
+                            '<td style="white-space: nowrap;">' + ts + '</td>' +
+                            '<td>' + (log.user || '-') + '</td>' +
+                            '<td>' + (log.src_ip || '-') + '</td>' +
+                            '<td>' + (log.device || '-') + '</td>' +
+                            '<td>' + (log.resource || '-') + '</td>' +
+                            '<td><span class="trust-score ' + scoreClass + '">' + score + '</span></td>' +
+                            '<td><span class="tag ' + actionClass + '">' + actionText + '</span></td>' +
+                            '</tr>';
+                    }).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">暂无访问日志</td></tr>';
+                }
+            })
+            .catch(function(e) { console.error('加载日志失败:', e); });
+    }
+
+    // ---- 初始化 ----
+    loadStatus();
+    loadStats();
+    loadPolicies();
+    loadLogs();
+
+    // 定时刷新
+    setInterval(loadStats, 30000);
+    setInterval(loadLogs, 30000);
+</script>
+{% endblock %}

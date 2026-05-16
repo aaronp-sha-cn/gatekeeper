@@ -1,0 +1,1145 @@
+{% extends "base.html" %}
+
+{% block title %}系统备份{% endblock %}
+
+{% block content %}
+<div class="backup-page">
+    <!-- 顶部操作栏 -->
+    <div class="backup-toolbar">
+        <div class="toolbar-left">
+            <button class="btn btn-primary" onclick="showCreateDialog()">
+                <span class="btn-icon">+</span> 创建备份
+            </button>
+            <button class="btn btn-secondary" onclick="showUploadDialog()">
+                <span class="btn-icon">&#8679;</span> 上传备份
+            </button>
+        </div>
+        <div class="toolbar-right">
+            <button class="btn btn-sm" onclick="loadBackupList()">
+                <span class="btn-icon">&#8635;</span> 刷新
+            </button>
+        </div>
+    </div>
+
+    <!-- 自动备份配置卡片（可折叠） -->
+    <div class="card" id="scheduleCard">
+        <div class="card-header" onclick="toggleSchedule()" style="cursor: pointer;">
+            <h3>自动备份配置</h3>
+            <span class="collapse-icon" id="scheduleIcon">&#9660;</span>
+        </div>
+        <div class="card-body" id="scheduleBody" style="display: none;">
+            <div class="schedule-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">启用自动备份</label>
+                        <label class="switch">
+                            <input type="checkbox" id="scheduleEnabled">
+                            <span class="switch-slider"></span>
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">加密备份</label>
+                        <label class="switch">
+                            <input type="checkbox" id="scheduleEncrypt">
+                            <span class="switch-slider"></span>
+                        </label>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Cron 表达式</label>
+                        <input type="text" class="form-input" id="scheduleCron" placeholder="0 2 * * *">
+                        <span class="form-hint">格式: 分 时 日 月 周（例: 0 2 * * * = 每天凌晨2点）</span>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">保留份数</label>
+                        <input type="number" class="form-input" id="scheduleRetain" min="1" max="100" value="10">
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-primary" onclick="saveSchedule()">保存配置</button>
+                </div>
+            </div>
+
+            <!-- 远程同步配置 -->
+            <div class="remote-section">
+                <h4 class="section-title">远程同步配置</h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">主机地址</label>
+                        <input type="text" class="form-input" id="remoteHost" placeholder="192.168.1.100">
+                    </div>
+                    <div class="form-group" style="flex: 0.5;">
+                        <label class="form-label">端口</label>
+                        <input type="number" class="form-input" id="remotePort" value="22" min="1" max="65535">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">用户名</label>
+                        <input type="text" class="form-input" id="remoteUser" placeholder="root">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">密码</label>
+                        <input type="password" class="form-input" id="remotePass" placeholder="SSH 密码">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">密钥路径（可选）</label>
+                        <input type="text" class="form-input" id="remoteKeyPath" placeholder="~/.ssh/id_rsa">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">远程目录</label>
+                        <input type="text" class="form-input" id="remotePath" value="/opt/gatekeeper/backups/">
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-secondary" onclick="testRemote()">测试连接</button>
+                    <button class="btn btn-primary" onclick="saveRemote()">保存配置</button>
+                    <button class="btn btn-secondary" onclick="syncAllToRemote()">同步全部</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 备份列表表格 -->
+    <div class="card">
+        <div class="card-header">
+            <h3>备份列表</h3>
+            <span class="badge" id="backupCount">0 份</span>
+        </div>
+        <div class="card-body" style="padding: 0;">
+            <div class="table-wrapper" style="max-height: 600px;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>文件名</th>
+                            <th>大小</th>
+                            <th>时间</th>
+                            <th>版本</th>
+                            <th>描述</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="backupListBody">
+                        <tr><td colspan="7" class="empty">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 创建备份弹窗 -->
+<div class="modal-overlay" id="createModal" style="display: none;">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>创建备份</h3>
+            <button class="modal-close" onclick="closeModal('createModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">备份描述</label>
+                <input type="text" class="form-input" id="createDesc" placeholder="可选，描述本次备份内容">
+            </div>
+            <div class="form-group">
+                <label class="switch">
+                    <input type="checkbox" id="createEncrypt">
+                    <span class="switch-slider"></span>
+                </label>
+                <span style="margin-left: 8px;">启用 AES-256 加密</span>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('createModal')">取消</button>
+            <button class="btn btn-primary" id="createBtn" onclick="createBackup()">创建</button>
+        </div>
+    </div>
+</div>
+
+<!-- 上传备份弹窗 -->
+<div class="modal-overlay" id="uploadModal" style="display: none;">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>上传备份</h3>
+            <button class="modal-close" onclick="closeModal('uploadModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">选择备份文件 (.tar.gz)</label>
+                <input type="file" class="form-input" id="uploadFile" accept=".tar.gz,.tgz">
+            </div>
+            <div class="form-group">
+                <label class="form-label">描述</label>
+                <input type="text" class="form-input" id="uploadDesc" placeholder="可选">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('uploadModal')">取消</button>
+            <button class="btn btn-primary" id="uploadBtn" onclick="uploadBackup()">上传</button>
+        </div>
+    </div>
+</div>
+
+<!-- 恢复确认弹窗 -->
+<div class="modal-overlay" id="restoreModal" style="display: none;">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>恢复备份</h3>
+            <button class="modal-close" onclick="closeModal('restoreModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="restore-warning">
+                <p><strong>警告：恢复操作将覆盖当前系统配置！</strong></p>
+                <p>系统将在恢复前自动创建当前状态的备份。</p>
+                <p>恢复完成后建议重启服务以使配置生效。</p>
+            </div>
+            <div class="form-group" style="margin-top: 16px;">
+                <label class="form-label">备份文件</label>
+                <div class="form-input" id="restoreFilename" style="background: rgba(0,0,0,0.2);"></div>
+            </div>
+            <div class="form-group" id="restorePasswordGroup" style="display: none;">
+                <label class="form-label">解密密码</label>
+                <input type="password" class="form-input" id="restorePassword" placeholder="请输入备份加密密码">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('restoreModal')">取消</button>
+            <button class="btn btn-danger" id="restoreBtn" onclick="confirmRestore()">确认恢复</button>
+        </div>
+    </div>
+</div>
+
+<!-- 删除确认弹窗 -->
+<div class="modal-overlay" id="deleteModal" style="display: none;">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>删除备份</h3>
+            <button class="modal-close" onclick="closeModal('deleteModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p>确定要删除备份 <strong id="deleteFilename"></strong> 吗？</p>
+            <p style="color: var(--text-muted); margin-top: 8px;">此操作不可撤销。</p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('deleteModal')">取消</button>
+            <button class="btn btn-danger" id="deleteBtn" onclick="confirmDelete()">确认删除</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+(function() {
+    'use strict';
+
+    // ===== 工具函数 =====
+    function safeFetch(url, options) {
+        options = options || {};
+        options.credentials = 'same-origin';
+        return fetch(url, options).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            var ct = r.headers.get('content-type') || '';
+            if (ct.indexOf('application/json') === -1) {
+                throw new Error('响应格式错误');
+            }
+            return r.json();
+        });
+    }
+
+    function showToast(message, type) {
+        type = type || 'info';
+        var container = document.getElementById('toastContainer');
+        if (!container) return;
+        var toast = document.createElement('div');
+        toast.className = 'toast toast-' + type;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(function() {
+            toast.classList.add('toast-hide');
+            setTimeout(function() {
+                if (toast.parentNode) toast.parentNode.removeChild(toast);
+            }, 300);
+        }, 3000);
+    }
+
+    function formatSize(bytes) {
+        if (bytes === 0) return '0 B';
+        var units = ['B', 'KB', 'MB', 'GB'];
+        var i = Math.floor(Math.log(bytes) / Math.log(1024));
+        i = Math.min(i, units.length - 1);
+        return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
+    }
+
+    function formatTime(isoStr) {
+        if (!isoStr) return '-';
+        try {
+            var d = new Date(isoStr);
+            var pad = function(n) { return n < 10 ? '0' + n : n; };
+            return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+                   ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+        } catch(e) {
+            return isoStr;
+        }
+    }
+
+    // ===== 弹窗管理 =====
+    window.showCreateDialog = function() {
+        document.getElementById('createDesc').value = '';
+        document.getElementById('createEncrypt').checked = false;
+        document.getElementById('createModal').style.display = 'flex';
+    };
+
+    window.showUploadDialog = function() {
+        document.getElementById('uploadFile').value = '';
+        document.getElementById('uploadDesc').value = '';
+        document.getElementById('uploadModal').style.display = 'flex';
+    };
+
+    window.closeModal = function(id) {
+        document.getElementById(id).style.display = 'none';
+    };
+
+    // 点击遮罩关闭弹窗
+    document.querySelectorAll('.modal-overlay').forEach(function(overlay) {
+        overlay.addEventListener('click', function(e) {
+            if (e.target === overlay) {
+                overlay.style.display = 'none';
+            }
+        });
+    });
+
+    // ===== 折叠面板 =====
+    window.toggleSchedule = function() {
+        var body = document.getElementById('scheduleBody');
+        var icon = document.getElementById('scheduleIcon');
+        if (body.style.display === 'none') {
+            body.style.display = 'block';
+            icon.innerHTML = '&#9650;';
+        } else {
+            body.style.display = 'none';
+            icon.innerHTML = '&#9660;';
+        }
+    };
+
+    // ===== 备份列表 =====
+    window.loadBackupList = function() {
+        safeFetch('/system/backup/api/list')
+            .then(function(data) {
+                if (data.status !== 'ok') {
+                    showToast(data.message || '加载备份列表失败', 'error');
+                    return;
+                }
+                renderBackupList(data.data || []);
+            })
+            .catch(function(err) {
+                showToast('加载备份列表失败: ' + err.message, 'error');
+            });
+    };
+
+    function renderBackupList(backups) {
+        var tbody = document.getElementById('backupListBody');
+        var countEl = document.getElementById('backupCount');
+        countEl.textContent = backups.length + ' 份';
+
+        if (backups.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无备份</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = backups.map(function(b) {
+            var encTag = b.encrypted
+                ? '<span class="badge badge-warning" title="已加密">&#128274; 加密</span>'
+                : '';
+            var desc = b.description || '-';
+            if (desc.length > 30) desc = desc.substring(0, 30) + '...';
+
+            return '<tr>' +
+                '<td><code class="backup-filename">' + b.filename + '</code></td>' +
+                '<td>' + formatSize(b.size) + '</td>' +
+                '<td>' + formatTime(b.timestamp) + '</td>' +
+                '<td>v' + (b.version || '-') + '</td>' +
+                '<td title="' + (b.description || '') + '">' + desc + '</td>' +
+                '<td>' + encTag + '</td>' +
+                '<td class="action-cell">' +
+                    '<button class="btn btn-sm" onclick="downloadBackup(\'' + b.filename + '\')" title="下载">&#8681;</button> ' +
+                    '<button class="btn btn-sm btn-warning" onclick="showRestoreDialog(\'' + b.filename + '\', ' + b.encrypted + ')" title="恢复">&#8634;</button> ' +
+                    '<button class="btn btn-sm btn-danger" onclick="showDeleteDialog(\'' + b.filename + '\')" title="删除">&#10005;</button>' +
+                '</td>' +
+                '</tr>';
+        }).join('');
+    }
+
+    // ===== 创建备份 =====
+    window.createBackup = function() {
+        var btn = document.getElementById('createBtn');
+        btn.disabled = true;
+        btn.textContent = '创建中...';
+
+        var encrypt = document.getElementById('createEncrypt').checked;
+        var description = document.getElementById('createDesc').value.trim();
+
+        safeFetch('/system/backup/api/create', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ encrypt: encrypt, description: description })
+        })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                showToast('备份创建成功: ' + data.data.filename, 'success');
+                closeModal('createModal');
+                loadBackupList();
+            } else {
+                showToast(data.message || '创建失败', 'error');
+            }
+        })
+        .catch(function(err) {
+            showToast('创建备份失败: ' + err.message, 'error');
+        })
+        .finally(function() {
+            btn.disabled = false;
+            btn.textContent = '创建';
+        });
+    };
+
+    // ===== 上传备份 =====
+    window.uploadBackup = function() {
+        var fileInput = document.getElementById('uploadFile');
+        if (!fileInput.files || !fileInput.files[0]) {
+            showToast('请选择备份文件', 'error');
+            return;
+        }
+
+        var btn = document.getElementById('uploadBtn');
+        btn.disabled = true;
+        btn.textContent = '上传中...';
+
+        var formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        formData.append('description', document.getElementById('uploadDesc').value.trim());
+
+        fetch('/system/backup/api/upload', {
+            method: 'POST',
+            credentials: 'same-origin',
+            body: formData
+        })
+        .then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                showToast('备份上传成功', 'success');
+                closeModal('uploadModal');
+                loadBackupList();
+            } else {
+                showToast(data.message || '上传失败', 'error');
+            }
+        })
+        .catch(function(err) {
+            showToast('上传失败: ' + err.message, 'error');
+        })
+        .finally(function() {
+            btn.disabled = false;
+            btn.textContent = '上传';
+        });
+    };
+
+    // ===== 下载备份 =====
+    window.downloadBackup = function(filename) {
+        window.location.href = '/system/backup/api/download/' + encodeURIComponent(filename);
+    };
+
+    // ===== 恢复备份 =====
+    var pendingRestoreFile = '';
+
+    window.showRestoreDialog = function(filename, encrypted) {
+        pendingRestoreFile = filename;
+        document.getElementById('restoreFilename').textContent = filename;
+        var pwGroup = document.getElementById('restorePasswordGroup');
+        pwGroup.style.display = encrypted ? 'block' : 'none';
+        document.getElementById('restorePassword').value = '';
+        document.getElementById('restoreModal').style.display = 'flex';
+    };
+
+    window.confirmRestore = function() {
+        var btn = document.getElementById('restoreBtn');
+        btn.disabled = true;
+        btn.textContent = '恢复中...';
+
+        var password = document.getElementById('restorePassword').value;
+
+        safeFetch('/system/backup/api/restore/' + encodeURIComponent(pendingRestoreFile), {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ password: password })
+        })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                showToast('备份恢复成功！建议重启服务', 'success');
+                closeModal('restoreModal');
+                loadBackupList();
+            } else {
+                showToast(data.message || '恢复失败', 'error');
+            }
+        })
+        .catch(function(err) {
+            showToast('恢复失败: ' + err.message, 'error');
+        })
+        .finally(function() {
+            btn.disabled = false;
+            btn.textContent = '确认恢复';
+        });
+    };
+
+    // ===== 删除备份 =====
+    var pendingDeleteFile = '';
+
+    window.showDeleteDialog = function(filename) {
+        pendingDeleteFile = filename;
+        document.getElementById('deleteFilename').textContent = filename;
+        document.getElementById('deleteModal').style.display = 'flex';
+    };
+
+    window.confirmDelete = function() {
+        var btn = document.getElementById('deleteBtn');
+        btn.disabled = true;
+        btn.textContent = '删除中...';
+
+        safeFetch('/system/backup/api/delete/' + encodeURIComponent(pendingDeleteFile), {
+            method: 'DELETE'
+        })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                showToast('备份已删除', 'success');
+                closeModal('deleteModal');
+                loadBackupList();
+            } else {
+                showToast(data.message || '删除失败', 'error');
+            }
+        })
+        .catch(function(err) {
+            showToast('删除失败: ' + err.message, 'error');
+        })
+        .finally(function() {
+            btn.disabled = false;
+            btn.textContent = '确认删除';
+        });
+    };
+
+    // ===== 自动备份计划 =====
+    window.loadSchedule = function() {
+        safeFetch('/system/backup/api/schedule')
+            .then(function(data) {
+                if (data.status !== 'ok') return;
+                var s = data.data;
+                document.getElementById('scheduleEnabled').checked = !!s.enabled;
+                document.getElementById('scheduleCron').value = s.cron_expression || '0 2 * * *';
+                document.getElementById('scheduleRetain').value = s.retain_count || 10;
+                document.getElementById('scheduleEncrypt').checked = !!s.encrypt;
+            })
+            .catch(function() {});
+    };
+
+    window.saveSchedule = function() {
+        var config = {
+            enabled: document.getElementById('scheduleEnabled').checked,
+            cron_expression: document.getElementById('scheduleCron').value.trim(),
+            retain_count: parseInt(document.getElementById('scheduleRetain').value) || 10,
+            encrypt: document.getElementById('scheduleEncrypt').checked
+        };
+
+        safeFetch('/system/backup/api/schedule', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(config)
+        })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                showToast('自动备份配置已保存', 'success');
+            } else {
+                showToast(data.message || '保存失败', 'error');
+            }
+        })
+        .catch(function(err) {
+            showToast('保存失败: ' + err.message, 'error');
+        });
+    };
+
+    // ===== 远程同步 =====
+    window.loadRemoteConfig = function() {
+        safeFetch('/system/backup/api/schedule')
+            .then(function(data) {
+                if (data.status !== 'ok') return;
+            })
+            .catch(function() {});
+    };
+
+    window.testRemote = function() {
+        var config = {
+            host: document.getElementById('remoteHost').value.trim(),
+            port: parseInt(document.getElementById('remotePort').value) || 22,
+            username: document.getElementById('remoteUser').value.trim(),
+            password: document.getElementById('remotePass').value,
+            key_path: document.getElementById('remoteKeyPath').value.trim(),
+            use_paramiko: true
+        };
+
+        if (!config.host || !config.username) {
+            showToast('请填写主机地址和用户名', 'error');
+            return;
+        }
+
+        showToast('正在测试连接...', 'info');
+
+        safeFetch('/system/backup/api/remote-test', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(config)
+        })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                showToast('远程连接测试成功', 'success');
+            } else {
+                showToast(data.message || '连接失败', 'error');
+            }
+        })
+        .catch(function(err) {
+            showToast('测试失败: ' + err.message, 'error');
+        });
+    };
+
+    window.saveRemote = function() {
+        var config = {
+            enabled: true,
+            host: document.getElementById('remoteHost').value.trim(),
+            port: parseInt(document.getElementById('remotePort').value) || 22,
+            username: document.getElementById('remoteUser').value.trim(),
+            password: document.getElementById('remotePass').value,
+            key_path: document.getElementById('remoteKeyPath').value.trim(),
+            remote_path: document.getElementById('remotePath').value.trim(),
+            use_paramiko: true
+        };
+
+        if (!config.host || !config.username) {
+            showToast('请填写主机地址和用户名', 'error');
+            return;
+        }
+
+        safeFetch('/system/backup/api/remote-test', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(config)
+        })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                showToast('远程配置已保存并验证通过', 'success');
+            } else {
+                showToast('连接验证失败: ' + (data.message || ''), 'error');
+            }
+        })
+        .catch(function(err) {
+            showToast('保存失败: ' + err.message, 'error');
+        });
+    };
+
+    window.syncAllToRemote = function() {
+        if (!confirm('确定要同步所有备份到远程服务器吗？')) return;
+
+        showToast('正在同步...', 'info');
+
+        safeFetch('/system/backup/api/remote-sync', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({})
+        })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                showToast(data.message || '同步成功', 'success');
+            } else {
+                showToast(data.message || '同步失败', 'error');
+            }
+        })
+        .catch(function(err) {
+            showToast('同步失败: ' + err.message, 'error');
+        });
+    };
+
+    // ===== 初始化 =====
+    loadBackupList();
+    loadSchedule();
+
+})();
+</script>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ===== 备份页面布局 ===== */
+.backup-page {
+    max-width: 1200px;
+}
+
+/* ===== 工具栏 ===== */
+.backup-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.toolbar-left, .toolbar-right {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+/* ===== 卡片 ===== */
+.card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    overflow: hidden;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 18px;
+    border-bottom: 1px solid #30363d;
+}
+
+.card-header h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #e6edf3;
+}
+
+.card-body {
+    padding: 18px;
+}
+
+.collapse-icon {
+    color: #8b949e;
+    font-size: 12px;
+    transition: transform 0.2s;
+}
+
+.badge {
+    background: rgba(88, 166, 255, 0.15);
+    color: #58a6ff;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.badge-warning {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+}
+
+/* ===== 按钮 ===== */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 16px;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    background: #21262d;
+    color: #c9d1d9;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+
+.btn:hover {
+    background: #30363d;
+    border-color: #8b949e;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    background: #238636;
+    border-color: #2ea043;
+    color: #ffffff;
+}
+
+.btn-primary:hover {
+    background: #2ea043;
+}
+
+.btn-secondary {
+    background: #21262d;
+    border-color: #30363d;
+}
+
+.btn-danger {
+    background: #da3633;
+    border-color: #f85149;
+    color: #ffffff;
+}
+
+.btn-danger:hover {
+    background: #f85149;
+}
+
+.btn-warning {
+    background: rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 0.4);
+    color: #fbbf24;
+}
+
+.btn-warning:hover {
+    background: rgba(245, 158, 11, 0.25);
+}
+
+.btn-sm {
+    padding: 4px 10px;
+    font-size: 12px;
+}
+
+.btn-icon {
+    font-size: 14px;
+}
+
+/* ===== 表单 ===== */
+.form-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 14px;
+}
+
+.form-group {
+    flex: 1;
+}
+
+.form-label {
+    display: block;
+    font-size: 13px;
+    color: #8b949e;
+    margin-bottom: 6px;
+    font-weight: 500;
+}
+
+.form-input {
+    width: 100%;
+    padding: 8px 12px;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    color: #c9d1d9;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.form-input:focus {
+    border-color: #58a6ff;
+}
+
+.form-input[type="file"] {
+    padding: 6px;
+}
+
+.form-hint {
+    display: block;
+    font-size: 11px;
+    color: #6e7681;
+    margin-top: 4px;
+}
+
+.form-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid #21262d;
+}
+
+/* ===== 开关 ===== */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 22px;
+    vertical-align: middle;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.switch-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: #30363d;
+    border-radius: 22px;
+    transition: 0.2s;
+}
+
+.switch-slider:before {
+    content: "";
+    position: absolute;
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background: #8b949e;
+    border-radius: 50%;
+    transition: 0.2s;
+}
+
+.switch input:checked + .switch-slider {
+    background: #238636;
+}
+
+.switch input:checked + .switch-slider:before {
+    transform: translateX(18px);
+    background: #ffffff;
+}
+
+/* ===== 远程同步区域 ===== */
+.remote-section {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #21262d;
+}
+
+.section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #e6edf3;
+    margin-bottom: 14px;
+}
+
+/* ===== 表格 ===== */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.data-table thead th {
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 600;
+    color: #8b949e;
+    border-bottom: 1px solid #30363d;
+    background: #0d1117;
+    white-space: nowrap;
+}
+
+.data-table tbody tr {
+    border-bottom: 1px solid #21262d;
+    transition: background 0.1s;
+}
+
+.data-table tbody tr:hover {
+    background: rgba(88, 166, 255, 0.04);
+}
+
+.data-table tbody td {
+    padding: 10px 14px;
+    color: #c9d1d9;
+    vertical-align: middle;
+}
+
+.data-table .empty {
+    text-align: center;
+    color: #6e7681;
+    padding: 40px 14px;
+}
+
+.backup-filename {
+    background: rgba(88, 166, 255, 0.08);
+    color: #79c0ff;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    word-break: break-all;
+}
+
+.action-cell {
+    white-space: nowrap;
+}
+
+.action-cell .btn {
+    padding: 3px 8px;
+    margin-right: 2px;
+}
+
+/* ===== 弹窗 ===== */
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    width: 90%;
+    max-width: 480px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid #30363d;
+}
+
+.modal-header h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: #e6edf3;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    color: #8b949e;
+    font-size: 22px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+}
+
+.modal-close:hover {
+    color: #e6edf3;
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 14px 20px;
+    border-top: 1px solid #30363d;
+}
+
+/* ===== 恢复警告 ===== */
+.restore-warning {
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 6px;
+    padding: 12px 14px;
+    color: #fbbf24;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.restore-warning strong {
+    color: #f59e0b;
+}
+
+/* ===== Toast 通知 ===== */
+.toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.toast {
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #ffffff;
+    min-width: 200px;
+    max-width: 400px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    animation: toastIn 0.2s ease;
+}
+
+.toast-hide {
+    animation: toastOut 0.3s ease forwards;
+}
+
+.toast-success {
+    background: #238636;
+    border: 1px solid #2ea043;
+}
+
+.toast-error {
+    background: #da3633;
+    border: 1px solid #f85149;
+}
+
+.toast-info {
+    background: #1f6feb;
+    border: 1px solid #388bfd;
+}
+
+@keyframes toastIn {
+    from { opacity: 0; transform: translateX(40px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes toastOut {
+    from { opacity: 1; transform: translateX(0); }
+    to { opacity: 0; transform: translateX(40px); }
+}
+
+/* ===== 响应式 ===== */
+@media (max-width: 768px) {
+    .form-row {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .backup-toolbar {
+        flex-direction: column;
+        gap: 8px;
+        align-items: stretch;
+    }
+
+    .toolbar-left, .toolbar-right {
+        justify-content: center;
+    }
+
+    .modal {
+        width: 95%;
+    }
+}
+</style>
+{% endblock %}

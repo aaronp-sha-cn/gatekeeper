@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+
+{% block title %}规则更新中心{% endblock %}
+
+{% block content %}
+<div class="rule-update-page">
+    <!-- 顶部操作栏 -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+        <div>
+            <span style="color:var(--text-muted); font-size:14px;">集中管理 IDS、CVE、WAF、DNS 四大安全模块的规则更新</span>
+        </div>
+        <div style="display:flex; gap:12px; align-items:center;">
+            <span id="overall-status" style="font-size:13px; color:var(--text-muted);">加载中...</span>
+            <button onclick="updateAll()" class="btn btn-primary" id="btn-update-all">
+                <i class="fas fa-sync-alt"></i> 全部更新
+            </button>
+        </div>
+    </div>
+
+    <!-- 模块卡片网格 -->
+    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:20px;">
+
+        <!-- IDS 规则 -->
+        <div class="card" id="card-ids" style="border:1px solid var(--border); border-radius:8px; padding:24px; background:var(--bg-card);">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="width:44px; height:44px; border-radius:8px; background:rgba(37,99,235,0.15); display:flex; align-items:center; justify-content:center;">
+                        <i class="fas fa-shield-alt" style="color:var(--primary); font-size:20px;"></i>
+                    </div>
+                    <div>
+                        <h3 style="font-size:16px; font-weight:600; margin:0;">IDS 规则</h3>
+                        <span style="font-size:12px; color:var(--text-muted);">入侵检测规则集</span>
+                    </div>
+                </div>
+                <span class="status-badge" id="status-ids" style="padding:3px 10px; border-radius:12px; font-size:12px; font-weight:500;">--</span>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+                <div style="background:var(--bg); border-radius:6px; padding:12px;">
+                    <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">规则数量</div>
+                    <div style="font-size:20px; font-weight:700;" id="count-ids">--</div>
+                </div>
+                <div style="background:var(--bg); border-radius:6px; padding:12px;">
+                    <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">上次更新</div>
+                    <div style="font-size:13px;" id="time-ids">--</div>
+                </div>
+            </div>
+            <div style="font-size:12px; color:var(--text-muted); margin-bottom:16px;" id="source-ids">数据源: --</div>
+            <div style="display:flex; gap:8px;">
+                <button onclick="updateModule('ids')" class="btn btn-primary btn-sm" id="btn-ids" style="flex:1;">立即更新</button>
+                <label class="btn btn-sm" style="background:var(--bg); border:1px solid var(--border); color:var(--text); cursor:pointer; padding:6px 12px; border-radius:4px; font-size:13px;">
+                    导入 <input type="file" accept=".rules,.json" style="display:none;" onchange="importFile('ids', this)">
+                </label>
+            </div>
+        </div>
+
+        <!-- CVE 漏洞数据库 -->
+        <div class="card" id="card-cve" style="border:1px solid var(--border); border-radius:8px; padding:24px; background:var(--bg-card);">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="width:44px; height:44px; border-radius:8px; background:rgba(220,38,38,0.15); display:flex; align-items:center; justify-content:center;">
+                        <i class="fas fa-bug" style="color:var(--danger); font-size:20px;"></i>
+                    </div>
+                    <div>
+                        <h3 style="font-size:16px; font-weight:600; margin:0;">CVE 数据库</h3>
+                        <span style="font-size:12px; color:var(--text-muted);">漏洞情报数据库</span>
+                    </div>
+                </div>
+                <span class="status-badge" id="status-cve" style="padding:3px 10px; border-radius:12px; font-size:12px; font-weight:500;">--</span>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+                <div style="background:var(--bg); border-radius:6px; padding:12px;">
+                    <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">CVE 数量</div>
+                    <div style="font-size:20px; font-weight:700;" id="count-cve">--</div>
+                </div>
+                <div style="background:var(--bg); border-radius:6px; padding:12px;">
+                    <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">上次更新</div>
+                    <div style="font-size:13px;" id="time-cve">--</div>
+                </div>
+            </div>
+            <div style="font-size:12px; color:var(--text-muted); margin-bottom:16px;" id="source-cve">数据源: --</div>
+            <div style="display:flex; gap:8px;">
+                <button onclick="updateModule('cve')" class="btn btn-primary btn-sm" id="btn-cve" style="flex:1;">立即更新</button>
+            </div>
+        </div>
+
+        <!-- WAF 规则 -->
+        <div class="card" id="card-waf" style="border:1px solid var(--border); border-radius:8px; padding:24px; background:var(--bg-card);">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="width:44px; height:44px; border-radius:8px; background:rgba(245,158,11,0.15); display:flex; align-items:center; justify-content:center;">
+                        <i class="fas fa-globe" style="color:var(--warning); font-size:20px;"></i>
+                    </div>
+                    <div>
+                        <h3 style="font-size:16px; font-weight:600; margin:0;">WAF 规则</h3>
+                        <span style="font-size:12px; color:var(--text-muted);">Web应用防火墙</span>
+                    </div>
+                </div>
+                <span class="status-badge" id="status-waf" style="padding:3px 10px; border-radius:12px; font-size:12px; font-weight:500;">--</span>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+                <div style="background:var(--bg); border-radius:6px; padding:12px;">
+                    <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">规则数量</div>
+                    <div style="font-size:20px; font-weight:700;" id="count-waf">--</div>
+                </div>
+                <div style="background:var(--bg); border-radius:6px; padding:12px;">
+                    <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">上次更新</div>
+                    <div style="font-size:13px;" id="time-waf">--</div>
+                </div>
+            </div>
+            <div style="font-size:12px; color:var(--text-muted); margin-bottom:16px;" id="source-waf">数据源: --</div>
+            <div style="display:flex; gap:8px;">
+                <button onclick="updateModule('waf')" class="btn btn-primary btn-sm" id="btn-waf" style="flex:1;">立即更新</button>
+                <label class="btn btn-sm" style="background:var(--bg); border:1px solid var(--border); color:var(--text); cursor:pointer; padding:6px 12px; border-radius:4px; font-size:13px;">
+                    导入 <input type="file" accept=".json" style="display:none;" onchange="importFile('waf', this)">
+                </label>
+            </div>
+        </div>
+
+        <!-- DNS 黑名单 -->
+        <div class="card" id="card-dns" style="border:1px solid var(--border); border-radius:8px; padding:24px; background:var(--bg-card);">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="width:44px; height:44px; border-radius:8px; background:rgba(22,163,74,0.15); display:flex; align-items:center; justify-content:center;">
+                        <i class="fas fa-filter" style="color:var(--success); font-size:20px;"></i>
+                    </div>
+                    <div>
+                        <h3 style="font-size:16px; font-weight:600; margin:0;">DNS 黑名单</h3>
+                        <span style="font-size:12px; color:var(--text-muted);">域名过滤黑名单</span>
+                    </div>
+                </div>
+                <span class="status-badge" id="status-dns" style="padding:3px 10px; border-radius:12px; font-size:12px; font-weight:500;">--</span>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+                <div style="background:var(--bg); border-radius:6px; padding:12px;">
+                    <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">黑名单数量</div>
+                    <div style="font-size:20px; font-weight:700;" id="count-dns">--</div>
+                </div>
+                <div style="background:var(--bg); border-radius:6px; padding:12px;">
+                    <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">上次更新</div>
+                    <div style="font-size:13px;" id="time-dns">--</div>
+                </div>
+            </div>
+            <div style="font-size:12px; color:var(--text-muted); margin-bottom:16px;" id="source-dns">数据源: --</div>
+            <div style="display:flex; gap:8px;">
+                <button onclick="updateModule('dns')" class="btn btn-primary btn-sm" id="btn-dns" style="flex:1;">立即更新</button>
+                <label class="btn btn-sm" style="background:var(--bg); border:1px solid var(--border); color:var(--text); cursor:pointer; padding:6px 12px; border-radius:4px; font-size:13px;">
+                    导入 <input type="file" accept=".txt,.json,.hosts" style="display:none;" onchange="importFile('dns', this)">
+                </label>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+var MODULES = ['ids', 'cve', 'waf', 'dns'];
+var MODULE_KEYS = {
+    ids: 'ids_rules',
+    cve: 'cve_database',
+    waf: 'waf_rules',
+    dns: 'dns_blacklist'
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadStatus();
+    setInterval(loadStatus, 60000);
+});
+
+function loadStatus() {
+    fetch('/rule-update/api/status')
+        .then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(function(data) {
+            if (data.status !== 'ok') return;
+            var status = data.data;
+            var allUpToDate = true;
+
+            MODULES.forEach(function(mod) {
+                var key = MODULE_KEYS[mod];
+                var info = status[key] || {};
+                var countEl = document.getElementById('count-' + mod);
+                var timeEl = document.getElementById('time-' + mod);
+                var sourceEl = document.getElementById('source-' + mod);
+                var statusEl = document.getElementById('status-' + mod);
+
+                countEl.textContent = info.count || 0;
+                timeEl.textContent = info.last_update ? formatTime(info.last_update) : '从未更新';
+                sourceEl.textContent = '数据源: ' + (info.source || '--') + (info.version ? ' (v' + info.version + ')' : '');
+
+                // 状态判断
+                var daysSince = getDaysSince(info.last_update);
+                if (!info.last_update) {
+                    statusEl.textContent = '未更新';
+                    statusEl.style.background = 'rgba(148,163,184,0.15)';
+                    statusEl.style.color = '#94a3b8';
+                    allUpToDate = false;
+                } else if (daysSince > 7) {
+                    statusEl.textContent = '已过期';
+                    statusEl.style.background = 'rgba(245,158,11,0.15)';
+                    statusEl.style.color = '#f59e0b';
+                    allUpToDate = false;
+                } else {
+                    statusEl.textContent = '最新';
+                    statusEl.style.background = 'rgba(22,163,74,0.15)';
+                    statusEl.style.color = '#16a34a';
+                }
+            });
+
+            var overallEl = document.getElementById('overall-status');
+            if (allUpToDate) {
+                overallEl.innerHTML = '<span style="color:#16a34a;"><i class="fas fa-check-circle"></i> 所有模块均为最新</span>';
+            } else {
+                overallEl.innerHTML = '<span style="color:#f59e0b;"><i class="fas fa-exclamation-triangle"></i> 部分模块需要更新</span>';
+            }
+        })
+        .catch(function() {
+            document.getElementById('overall-status').innerHTML = '<span style="color:#dc2626;">加载状态失败</span>';
+        });
+}
+
+function getDaysSince(isoStr) {
+    if (!isoStr) return Infinity;
+    var then = new Date(isoStr);
+    var now = new Date();
+    return (now - then) / 86400000;
+}
+
+function updateModule(module) {
+    var btn = document.getElementById('btn-' + module);
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 更新中...';
+
+    fetch('/rule-update/api/update/' + module, { method: 'POST' })
+        .then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                showNotification(module.toUpperCase() + ' 更新已启动', 'success');
+            } else {
+                showNotification('更新失败: ' + (data.message || '未知错误'), 'error');
+            }
+        })
+        .catch(function(e) {
+            showNotification('更新请求失败: ' + e.message, 'error');
+        })
+        .finally(function() {
+            btn.disabled = false;
+            btn.textContent = '立即更新';
+            setTimeout(loadStatus, 3000);
+        });
+}
+
+function updateAll() {
+    var btn = document.getElementById('btn-update-all');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 更新中...';
+
+    // 禁用所有模块按钮
+    MODULES.forEach(function(mod) {
+        var mBtn = document.getElementById('btn-' + mod);
+        mBtn.disabled = true;
+        mBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 更新中...';
+    });
+
+    fetch('/rule-update/api/update-all', { method: 'POST' })
+        .then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                showNotification('全部模块更新已启动', 'success');
+            } else {
+                showNotification('更新失败: ' + (data.message || '未知错误'), 'error');
+            }
+        })
+        .catch(function(e) {
+            showNotification('更新请求失败: ' + e.message, 'error');
+        })
+        .finally(function() {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-sync-alt"></i> 全部更新';
+            MODULES.forEach(function(mod) {
+                var mBtn = document.getElementById('btn-' + mod);
+                mBtn.disabled = false;
+                mBtn.textContent = '立即更新';
+            });
+            setTimeout(loadStatus, 5000);
+        });
+}
+
+function importFile(module, input) {
+    var file = input.files[0];
+    if (!file) return;
+
+    var formData = new FormData();
+    formData.append('file', file);
+
+    fetch('/rule-update/api/import/' + module, {
+        method: 'POST',
+        body: formData
+    })
+    .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(function(data) {
+        if (data.status === 'ok') {
+            var result = data.data || {};
+            showNotification(module.toUpperCase() + ' 导入成功: ' + (result.message || '完成'), 'success');
+            loadStatus();
+        } else {
+            showNotification('导入失败: ' + (data.message || '未知错误'), 'error');
+        }
+    })
+    .catch(function() {
+        showNotification('导入请求失败', 'error');
+    })
+    .finally(function() {
+        input.value = '';
+    });
+}
+</script>
+{% endblock %}

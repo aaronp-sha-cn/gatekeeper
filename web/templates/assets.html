@@ -1,0 +1,935 @@
+{% extends "base.html" %}
+
+{% block title %}资产管理{% endblock %}
+
+{% block extra_css %}
+<style>
+.asset-page { padding: 20px; }
+
+/* 统计概览 */
+.stats-overview {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+}
+.stat-card .stat-value {
+    font-size: 32px;
+    font-weight: bold;
+    color: var(--primary-color, #00d4ff);
+}
+.stat-card .stat-label {
+    font-size: 14px;
+    color: var(--text-secondary, #888);
+    margin-top: 4px;
+}
+.stat-card.risk-high .stat-value { color: #ff4757; }
+.stat-card.stat-online .stat-value { color: #2ed573; }
+.stat-card.stat-offline .stat-value { color: #ffa502; }
+
+/* 扫描控制面板 */
+.scan-panel {
+    background: var(--card-bg, #1a1a2e);
+    border: 1px solid var(--border-color, #2a2a4a);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 24px;
+}
+.scan-panel h3 {
+    margin: 0 0 16px 0;
+    color: var(--text-primary, #e0e0e0);
+}
+.scan-controls {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+.scan-controls .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.scan-controls label {
+    font-size: 12px;
+    color: var(--text-secondary, #888);
+}
+.scan-controls input,
+.scan-controls select {
+    background: var(--input-bg, #0d0d1a);
+    border: 1px solid var(--border-color, #2a2a4a);
+    color: var(--text-primary, #e0e0e0);
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 14px;
+}
+.scan-controls input:focus,
+.scan-controls select:focus {
+    outline: none;
+    border-color: var(--primary-color, #00d4ff);
+}
+.btn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+.btn-primary {
+    background: var(--primary-color, #00d4ff);
+    color: #000;
+}
+.btn-primary:hover { opacity: 0.85; }
+.btn-danger {
+    background: #ff4757;
+    color: #fff;
+}
+.btn-danger:hover { opacity: 0.85; }
+.btn-sm {
+    padding: 4px 12px;
+    font-size: 12px;
+}
+.btn-export {
+    background: #3742fa;
+    color: #fff;
+}
+.btn-export:hover { opacity: 0.85; }
+
+/* 进度条 */
+.progress-bar-container {
+    margin-top: 16px;
+    display: none;
+}
+.progress-bar-container.active { display: block; }
+.progress-bar-bg {
+    width: 100%;
+    height: 8px;
+    background: var(--input-bg, #0d0d1a);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00d4ff, #3742fa);
+    border-radius: 4px;
+    transition: width 0.3s;
+    width: 0%;
+}
+.progress-text {
+    font-size: 12px;
+    color: var(--text-secondary, #888);
+    margin-top: 4px;
+}
+
+/* 筛选与操作栏 */
+.filter-bar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.filter-bar select,
+.filter-bar input {
+    background: var(--input-bg, #0d0d1a);
+    border: 1px solid var(--border-color, #2a2a4a);
+    color: var(--text-primary, #e0e0e0);
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+}
+.filter-bar select:focus,
+.filter-bar input:focus {
+    outline: none;
+    border-color: var(--primary-color, #00d4ff);
+}
+
+/* 资产表格 */
+.asset-table-container {
+    background: var(--card-bg, #1a1a2e);
+    border: 1px solid var(--border-color, #2a2a4a);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 24px;
+}
+.asset-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.asset-table thead {
+    background: var(--input-bg, #0d0d1a);
+}
+.asset-table th {
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary, #888);
+    border-bottom: 1px solid var(--border-color, #2a2a4a);
+    white-space: nowrap;
+}
+.asset-table td {
+    padding: 10px 16px;
+    font-size: 13px;
+    color: var(--text-primary, #e0e0e0);
+    border-bottom: 1px solid var(--border-color, #1a1a3a);
+}
+.asset-table tbody tr:hover {
+    background: rgba(0, 212, 255, 0.05);
+}
+.asset-table .ip-cell {
+    font-family: monospace;
+    color: var(--primary-color, #00d4ff);
+}
+
+/* 状态标签 */
+.badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+}
+.badge-online { background: rgba(46, 213, 115, 0.2); color: #2ed573; }
+.badge-offline { background: rgba(255, 165, 2, 0.2); color: #ffa502; }
+.badge-low { background: rgba(46, 213, 115, 0.2); color: #2ed573; }
+.badge-medium { background: rgba(255, 165, 2, 0.2); color: #ffa502; }
+.badge-high { background: rgba(255, 71, 87, 0.2); color: #ff4757; }
+.badge-critical { background: rgba(255, 71, 87, 0.4); color: #ff6b81; }
+.badge-server { background: rgba(55, 66, 250, 0.2); color: #3742fa; }
+.badge-workstation { background: rgba(0, 212, 255, 0.2); color: #00d4ff; }
+.badge-printer { background: rgba(165, 94, 234, 0.2); color: #a55eea; }
+.badge-iot { background: rgba(255, 165, 2, 0.2); color: #ffa502; }
+.badge-router { background: rgba(46, 213, 115, 0.2); color: #2ed573; }
+.badge-unknown { background: rgba(136, 136, 136, 0.2); color: #888; }
+
+/* 图表区域 */
+.charts-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+.chart-card {
+    background: var(--card-bg, #1a1a2e);
+    border: 1px solid var(--border-color, #2a2a4a);
+    border-radius: 8px;
+    padding: 20px;
+}
+.chart-card h4 {
+    margin: 0 0 16px 0;
+    color: var(--text-primary, #e0e0e0);
+    font-size: 14px;
+}
+.chart-canvas-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 250px;
+}
+
+/* 弹窗 */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+}
+.modal-overlay.active { display: flex; }
+.modal {
+    background: var(--card-bg, #1a1a2e);
+    border: 1px solid var(--border-color, #2a2a4a);
+    border-radius: 8px;
+    width: 600px;
+    max-width: 90vw;
+    max-height: 80vh;
+    overflow-y: auto;
+    padding: 24px;
+}
+.modal h3 {
+    margin: 0 0 20px 0;
+    color: var(--text-primary, #e0e0e0);
+}
+.modal-close {
+    float: right;
+    background: none;
+    border: none;
+    color: var(--text-secondary, #888);
+    font-size: 20px;
+    cursor: pointer;
+}
+.modal-close:hover { color: #ff4757; }
+.detail-row {
+    display: flex;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color, #1a1a3a);
+}
+.detail-row .detail-label {
+    width: 120px;
+    color: var(--text-secondary, #888);
+    font-size: 13px;
+    flex-shrink: 0;
+}
+.detail-row .detail-value {
+    color: var(--text-primary, #e0e0e0);
+    font-size: 13px;
+    word-break: break-all;
+}
+
+/* 空状态 */
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-secondary, #888);
+}
+.empty-state p {
+    font-size: 14px;
+    margin-top: 8px;
+}
+
+/* 分页 */
+.pagination {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 16px;
+}
+.pagination button {
+    background: var(--input-bg, #0d0d1a);
+    border: 1px solid var(--border-color, #2a2a4a);
+    color: var(--text-primary, #e0e0e0);
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+}
+.pagination button:hover { border-color: var(--primary-color, #00d4ff); }
+.pagination button.active {
+    background: var(--primary-color, #00d4ff);
+    color: #000;
+    border-color: var(--primary-color, #00d4ff);
+}
+.pagination button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* 扫描历史 */
+.scan-history {
+    background: var(--card-bg, #1a1a2e);
+    border: 1px solid var(--border-color, #2a2a4a);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 24px;
+}
+.scan-history h4 {
+    margin: 0 0 12px 0;
+    color: var(--text-primary, #e0e0e0);
+    font-size: 14px;
+}
+.history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color, #1a1a3a);
+    font-size: 13px;
+}
+.history-item:last-child { border-bottom: none; }
+.history-target {
+    color: var(--primary-color, #00d4ff);
+    font-family: monospace;
+}
+.history-status {
+    font-size: 12px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="asset-page">
+
+    <!-- 统计概览 -->
+    <div class="stats-overview">
+        <div class="stat-card">
+            <div class="stat-value" id="stat-total">0</div>
+            <div class="stat-label">总资产数</div>
+        </div>
+        <div class="stat-card stat-online">
+            <div class="stat-value" id="stat-online">0</div>
+            <div class="stat-label">在线资产</div>
+        </div>
+        <div class="stat-card stat-offline">
+            <div class="stat-value" id="stat-offline">0</div>
+            <div class="stat-label">离线资产</div>
+        </div>
+        <div class="stat-card risk-high">
+            <div class="stat-value" id="stat-highrisk">0</div>
+            <div class="stat-label">高风险资产</div>
+        </div>
+    </div>
+
+    <!-- 扫描控制面板 -->
+    <div class="scan-panel">
+        <h3>资产扫描</h3>
+        <div class="scan-controls">
+            <div class="form-group" style="flex:1; min-width:200px;">
+                <label>扫描目标 (IP/CIDR/域名)</label>
+                <input type="text" id="scan-target" placeholder="例如: 192.168.1.0/24">
+            </div>
+            <div class="form-group">
+                <label>扫描类型</label>
+                <select id="scan-type">
+                    <option value="quick">快速扫描</option>
+                    <option value="full">全端口扫描</option>
+                    <option value="custom">自定义端口</option>
+                </select>
+            </div>
+            <div class="form-group" id="custom-ports-group" style="display:none; min-width:180px;">
+                <label>自定义端口</label>
+                <input type="text" id="scan-ports" placeholder="例如: 80,443,8080">
+            </div>
+            <button class="btn btn-primary" id="btn-start-scan" onclick="startScan()">开始扫描</button>
+            <button class="btn btn-danger" id="btn-stop-scan" onclick="stopScan()" style="display:none;">停止扫描</button>
+        </div>
+        <div class="progress-bar-container" id="progress-container">
+            <div class="progress-bar-bg">
+                <div class="progress-bar-fill" id="progress-fill"></div>
+            </div>
+            <div class="progress-text" id="progress-text">准备中...</div>
+        </div>
+    </div>
+
+    <!-- 图表区域 -->
+    <div class="charts-row">
+        <div class="chart-card">
+            <h4>设备类型分布</h4>
+            <div class="chart-canvas-wrapper">
+                <canvas id="chart-device-type" width="280" height="250"></canvas>
+            </div>
+        </div>
+        <div class="chart-card">
+            <h4>操作系统分布</h4>
+            <div class="chart-canvas-wrapper">
+                <canvas id="chart-os-dist" width="280" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- 筛选与操作栏 -->
+    <div class="filter-bar">
+        <select id="filter-device-type" onchange="loadAssets()">
+            <option value="">全部设备类型</option>
+            <option value="server">服务器</option>
+            <option value="workstation">工作站</option>
+            <option value="printer">打印机</option>
+            <option value="iot">IoT设备</option>
+            <option value="router">路由器</option>
+            <option value="switch">交换机</option>
+            <option value="ap">无线AP</option>
+            <option value="mobile">移动设备</option>
+            <option value="unknown">未知</option>
+        </select>
+        <select id="filter-risk-level" onchange="loadAssets()">
+            <option value="">全部风险级别</option>
+            <option value="low">低</option>
+            <option value="medium">中</option>
+            <option value="high">高</option>
+            <option value="critical">严重</option>
+        </select>
+        <label style="font-size:13px; color:var(--text-secondary,#888); display:flex; align-items:center; gap:4px;">
+            <input type="checkbox" id="filter-online" onchange="loadAssets()"> 仅在线
+        </label>
+        <div style="flex:1;"></div>
+        <button class="btn btn-export btn-sm" onclick="exportAssets('csv')">导出CSV</button>
+        <button class="btn btn-export btn-sm" onclick="exportAssets('json')">导出JSON</button>
+        <button class="btn btn-sm" style="background:#2ed573;color:#000;" onclick="loadAssets()">刷新</button>
+    </div>
+
+    <!-- 资产列表表格 -->
+    <div class="asset-table-container">
+        <table class="asset-table">
+            <thead>
+                <tr>
+                    <th>IP地址</th>
+                    <th>MAC地址</th>
+                    <th>主机名</th>
+                    <th>操作系统</th>
+                    <th>厂商</th>
+                    <th>设备类型</th>
+                    <th>开放端口</th>
+                    <th>风险</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="asset-tbody">
+                <tr>
+                    <td colspan="10">
+                        <div class="empty-state">
+                            <p>暂无资产数据，请先执行扫描</p>
+                        </div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 分页 -->
+    <div class="pagination" id="pagination"></div>
+
+    <!-- 扫描历史 -->
+    <div class="scan-history">
+        <h4>扫描历史</h4>
+        <div id="scan-history-list">
+            <div class="empty-state" style="padding:20px;">
+                <p>暂无扫描记录</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 资产详情弹窗 -->
+<div class="modal-overlay" id="asset-modal">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+        <h3 id="modal-title">资产详情</h3>
+        <div id="modal-content"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// ============================================================
+// 全局状态
+// ============================================================
+let currentPage = 1;
+let scanPolling = null;
+
+const DEVICE_TYPE_LABELS = {
+    server: '服务器', workstation: '工作站', printer: '打印机',
+    iot: 'IoT设备', mobile: '移动设备', router: '路由器',
+    switch: '交换机', ap: '无线AP', unknown: '未知',
+};
+const RISK_LABELS = {
+    low: '低', medium: '中', high: '高', critical: '严重',
+};
+
+// ============================================================
+// 初始化
+// ============================================================
+document.addEventListener('DOMContentLoaded', function() {
+    loadStats();
+    loadAssets();
+    loadScanHistory();
+
+    // 扫描类型切换
+    document.getElementById('scan-type').addEventListener('change', function() {
+        document.getElementById('custom-ports-group').style.display =
+            this.value === 'custom' ? 'flex' : 'none';
+    });
+});
+
+// ============================================================
+// 扫描控制
+// ============================================================
+function startScan() {
+    const target = document.getElementById('scan-target').value.trim();
+    const scanType = document.getElementById('scan-type').value;
+    const ports = document.getElementById('scan-ports').value.trim();
+
+    if (!target) {
+        alert('请输入扫描目标');
+        return;
+    }
+
+    const body = { target: target, scan_type: scanType };
+    if (scanType === 'custom' && ports) {
+        body.ports = ports;
+    }
+
+    fetch('/assets/api/scan/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    })
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(data => {
+        if (data.status === 'ok') {
+            document.getElementById('btn-start-scan').style.display = 'none';
+            document.getElementById('btn-stop-scan').style.display = 'inline-block';
+            document.getElementById('progress-container').classList.add('active');
+            pollScanStatus();
+        } else {
+            alert(data.message || '启动扫描失败');
+        }
+    })
+    .catch(err => alert('请求失败: ' + err));
+}
+
+function stopScan() {
+    fetch('/assets/api/scan/stop', { method: 'POST' })
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(data => {
+        if (scanPolling) { clearInterval(scanPolling); scanPolling = null; }
+        document.getElementById('btn-start-scan').style.display = 'inline-block';
+        document.getElementById('btn-stop-scan').style.display = 'none';
+        document.getElementById('progress-text').textContent = '扫描已停止';
+        loadStats();
+        loadAssets();
+        loadScanHistory();
+    });
+}
+
+function pollScanStatus() {
+    if (scanPolling) clearInterval(scanPolling);
+    scanPolling = setInterval(function() {
+        fetch('/assets/api/scan/status')
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (!data.task) {
+                clearInterval(scanPolling);
+                scanPolling = null;
+                return;
+            }
+            const task = data.task;
+            document.getElementById('progress-fill').style.width = task.progress + '%';
+            document.getElementById('progress-text').textContent =
+                '扫描进度: ' + task.progress + '% | 已发现: ' + task.discovered_count + ' 个资产';
+
+            if (task.status === 'completed' || task.status === 'failed' || task.status === 'stopped') {
+                clearInterval(scanPolling);
+                scanPolling = null;
+                document.getElementById('btn-start-scan').style.display = 'inline-block';
+                document.getElementById('btn-stop-scan').style.display = 'none';
+                document.getElementById('progress-text').textContent =
+                    '扫描' + (task.status === 'completed' ? '完成' : task.status === 'stopped' ? '已停止' : '失败') +
+                    ' | 发现: ' + task.discovered_count + ' 个资产';
+                loadStats();
+                loadAssets();
+                loadScanHistory();
+            }
+        });
+    }, 1500);
+}
+
+// ============================================================
+// 资产列表
+// ============================================================
+function loadAssets() {
+    const params = new URLSearchParams();
+    const deviceType = document.getElementById('filter-device-type').value;
+    const riskLevel = document.getElementById('filter-risk-level').value;
+    const onlineOnly = document.getElementById('filter-online').checked;
+
+    if (deviceType) params.set('device_type', deviceType);
+    if (riskLevel) params.set('risk_level', riskLevel);
+    if (onlineOnly) params.set('online_only', 'true');
+    params.set('page', currentPage);
+    params.set('page_size', 50);
+
+    fetch('/assets/api/assets?' + params.toString())
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(data => {
+        if (data.status !== 'ok') return;
+        renderAssetTable(data.assets);
+        renderPagination(data.page, data.total_pages);
+    })
+    .catch(function(e) {
+        var tbody = document.getElementById('asset-tbody');
+        if (tbody) tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><p>加载失败: ' + e.message + '</p></div></td></tr>';
+    });
+}
+
+function renderAssetTable(assets) {
+    const tbody = document.getElementById('asset-tbody');
+    if (!assets || assets.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><p>暂无资产数据</p></div></td></tr>';
+        return;
+    }
+    tbody.innerHTML = assets.map(a => {
+        const portsStr = (a.open_ports || []).slice(0, 5).join(', ') +
+            ((a.open_ports || []).length > 5 ? ' ...' : '');
+        return '<tr>' +
+            '<td class="ip-cell">' + escHtml(a.ip_address) + '</td>' +
+            '<td style="font-family:monospace;font-size:12px;">' + escHtml(a.mac_address || '-') + '</td>' +
+            '<td>' + escHtml(a.hostname || '-') + '</td>' +
+            '<td>' + escHtml(a.os_name || '-') + '</td>' +
+            '<td>' + escHtml(a.vendor || '-') + '</td>' +
+            '<td><span class="badge badge-' + (a.device_type || 'unknown') + '">' +
+                (DEVICE_TYPE_LABELS[a.device_type] || '未知') + '</span></td>' +
+            '<td style="font-family:monospace;font-size:12px;">' + escHtml(portsStr) + '</td>' +
+            '<td><span class="badge badge-' + (a.risk_level || 'low') + '">' +
+                (RISK_LABELS[a.risk_level] || '低') + '</span></td>' +
+            '<td><span class="badge badge-' + (a.is_online ? 'online' : 'offline') + '">' +
+                (a.is_online ? '在线' : '离线') + '</span></td>' +
+            '<td>' +
+                '<button class="btn btn-sm btn-primary" onclick="viewAsset(\'' + a.id + '\')">详情</button> ' +
+                '<button class="btn btn-sm btn-danger" onclick="deleteAsset(\'' + a.id + '\')">删除</button>' +
+            '</td>' +
+        '</tr>';
+    }).join('');
+}
+
+function renderPagination(page, totalPages) {
+    const container = document.getElementById('pagination');
+    if (totalPages <= 1) { container.innerHTML = ''; return; }
+    let html = '<button ' + (page <= 1 ? 'disabled' : '') + ' onclick="goPage(' + (page-1) + ')">上一页</button>';
+    for (let i = 1; i <= totalPages; i++) {
+        if (totalPages > 7 && Math.abs(i - page) > 2 && i !== 1 && i !== totalPages) {
+            if (i === page - 3 || i === page + 3) html += '<button disabled>...</button>';
+            continue;
+        }
+        html += '<button class="' + (i === page ? 'active' : '') + '" onclick="goPage(' + i + ')">' + i + '</button>';
+    }
+    html += '<button ' + (page >= totalPages ? 'disabled' : '') + ' onclick="goPage(' + (page+1) + ')">下一页</button>';
+    container.innerHTML = html;
+}
+
+function goPage(p) {
+    currentPage = p;
+    loadAssets();
+}
+
+// ============================================================
+// 资产详情
+// ============================================================
+function viewAsset(id) {
+    fetch('/assets/api/assets/' + id)
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(data => {
+        if (data.status !== 'ok') { alert(data.message); return; }
+        const a = data.asset;
+        document.getElementById('modal-title').textContent = '资产详情 - ' + a.ip_address;
+        const portsStr = (a.open_ports || []).join(', ') || '-';
+        const svcsHtml = (a.services || []).map(s =>
+            s.port + '/' + s.protocol + ' (' + s.name + ')'
+        ).join('<br>') || '-';
+        const tagsStr = (a.tags || []).join(', ') || '-';
+
+        document.getElementById('modal-content').innerHTML =
+            detailRow('IP地址', a.ip_address) +
+            detailRow('MAC地址', a.mac_address || '-') +
+            detailRow('主机名', a.hostname || '-') +
+            detailRow('操作系统', (a.os_name || '-') + ' ' + (a.os_version || '')) +
+            detailRow('厂商', a.vendor || '-') +
+            detailRow('设备类型', DEVICE_TYPE_LABELS[a.device_type] || '未知') +
+            detailRow('开放端口', portsStr) +
+            detailRow('服务列表', svcsHtml) +
+            detailRow('风险级别', '<span class="badge badge-' + (a.risk_level || 'low') + '">' +
+                (RISK_LABELS[a.risk_level] || '低') + '</span>') +
+            detailRow('漏洞数量', a.vulnerabilities_count || 0) +
+            detailRow('在线状态', a.is_online ? '<span class="badge badge-online">在线</span>' : '<span class="badge badge-offline">离线</span>') +
+            detailRow('标签', tagsStr) +
+            detailRow('首次发现', a.first_seen || '-') +
+            detailRow('最后发现', a.last_seen || '-');
+
+        document.getElementById('asset-modal').classList.add('active');
+    });
+}
+
+function detailRow(label, value) {
+    return '<div class="detail-row"><div class="detail-label">' + label +
+        '</div><div class="detail-value">' + value + '</div></div>';
+}
+
+function closeModal() {
+    document.getElementById('asset-modal').classList.remove('active');
+}
+
+// ============================================================
+// 资产操作
+// ============================================================
+function deleteAsset(id) {
+    if (!confirm('确定要删除此资产吗？')) return;
+    fetch('/assets/api/assets/' + id, { method: 'DELETE' })
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(data => {
+        if (data.status === 'ok') {
+            loadAssets();
+            loadStats();
+        } else {
+            alert(data.message || '删除失败');
+        }
+    });
+}
+
+// ============================================================
+// 统计与图表
+// ============================================================
+function loadStats() {
+    fetch('/assets/api/stats')
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(data => {
+        if (data.status !== 'ok') return;
+        document.getElementById('stat-total').textContent = data.total;
+        document.getElementById('stat-online').textContent = data.online;
+        document.getElementById('stat-offline').textContent = data.offline;
+        document.getElementById('stat-highrisk').textContent = data.high_risk;
+
+        // 绘制饼图
+        drawPieChart('chart-device-type', data.device_types || {});
+        drawPieChart('chart-os-dist', data.os_distribution || {});
+    });
+}
+
+function drawPieChart(canvasId, data) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const entries = Object.entries(data);
+    if (entries.length === 0) {
+        ctx.fillStyle = '#888';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('暂无数据', w / 2, h / 2);
+        return;
+    }
+
+    const colors = ['#00d4ff', '#3742fa', '#2ed573', '#ff4757', '#ffa502',
+                    '#a55eea', '#ff6b81', '#70a1ff', '#7bed9f', '#eccc68'];
+    const total = entries.reduce((s, e) => s + e[1], 0);
+    const cx = w / 2;
+    const cy = h / 2 - 10;
+    const radius = Math.min(w, h) / 2 - 40;
+
+    let startAngle = -Math.PI / 2;
+    entries.forEach(function(entry, i) {
+        const sliceAngle = (entry[1] / total) * 2 * Math.PI;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, radius, startAngle, startAngle + sliceAngle);
+        ctx.closePath();
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.fill();
+        startAngle += sliceAngle;
+    });
+
+    // 中心空白（环形图）
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 0.5, 0, Math.PI * 2);
+    ctx.fillStyle = getComputedStyle(document.querySelector('.chart-card')).backgroundColor || '#1a1a2e';
+    ctx.fill();
+
+    // 图例
+    let legendY = h - 10;
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'left';
+    const legendX = 10;
+    entries.forEach(function(entry, i) {
+        const label = entry[0] + ' (' + entry[1] + ')';
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.fillRect(legendX, legendY - 10, 10, 10);
+        ctx.fillStyle = '#ccc';
+        ctx.fillText(label, legendX + 14, legendY);
+        legendX_pos = ctx.measureText(label).width + legendX + 20;
+        if (legendX_pos > w - 80) {
+            // 简单处理：如果太长就截断
+        }
+    });
+}
+
+// ============================================================
+// 扫描历史
+// ============================================================
+function loadScanHistory() {
+    fetch('/assets/api/scan/history')
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(data => {
+        if (data.status !== 'ok' || !data.tasks || data.tasks.length === 0) return;
+        const container = document.getElementById('scan-history-list');
+        const statusLabels = {
+            pending: '等待中', running: '运行中', completed: '已完成',
+            failed: '失败', stopped: '已停止',
+        };
+        const statusColors = {
+            pending: '#ffa502', running: '#00d4ff', completed: '#2ed573',
+            failed: '#ff4757', stopped: '#ffa502',
+        };
+        container.innerHTML = data.tasks.slice(0, 5).map(function(t) {
+            return '<div class="history-item">' +
+                '<span class="history-target">' + escHtml(t.target) + '</span>' +
+                '<span>' + t.scan_type + '</span>' +
+                '<span>发现 ' + t.discovered_count + ' 个资产</span>' +
+                '<span class="history-status" style="color:' + (statusColors[t.status] || '#888') + '">' +
+                    (statusLabels[t.status] || t.status) + '</span>' +
+                '<span style="color:var(--text-secondary,#888);font-size:12px;">' +
+                    (t.completed_at || t.started_at || '') + '</span>' +
+            '</div>';
+        }).join('');
+    });
+}
+
+// ============================================================
+// 导出
+// ============================================================
+function exportAssets(format) {
+    var btn = event.target.closest('button');
+    var origText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '导出中...';
+
+    fetch('/assets/api/export?format=' + format)
+        .then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            var ct = r.headers.get('content-type') || '';
+            if (ct.indexOf('json') !== -1 && !ct.includes('attachment')) {
+                return r.json().then(function(err) { throw new Error(err.message || '导出失败'); });
+            }
+            return r.blob();
+        })
+        .then(function(blob) {
+            var url = window.URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = 'assets_export.' + format;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        })
+        .catch(function(e) {
+            alert('导出失败: ' + e.message);
+        })
+        .finally(function() {
+            btn.disabled = false;
+            btn.textContent = origText;
+        });
+}
+
+// ============================================================
+// 工具函数
+// ============================================================
+function escHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+// 点击弹窗外部关闭
+document.addEventListener('click', function(e) {
+    if (e.target.id === 'asset-modal') closeModal();
+});
+</script>
+{% endblock %}

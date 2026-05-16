@@ -1,0 +1,544 @@
+{% extends "base.html" %}
+{% block title %}网关病毒扫描 - GateKeeper{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>网关病毒扫描</h1>
+    <p class="text-muted">HTTP/FTP/SMTP/SMB 流量病毒扫描与阻断</p>
+</div>
+
+<!-- 全局统计 -->
+<div class="stats-grid" id="stats-section">
+    <div class="stat-card">
+        <div class="stat-value" id="stat-total">0</div>
+        <div class="stat-label">扫描文件总数</div>
+    </div>
+    <div class="stat-card stat-danger">
+        <div class="stat-value" id="stat-infected">0</div>
+        <div class="stat-label">发现病毒</div>
+    </div>
+    <div class="stat-card stat-warning">
+        <div class="stat-value" id="stat-blocked">0</div>
+        <div class="stat-label">已阻断</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-errors">0</div>
+        <div class="stat-label">扫描错误</div>
+    </div>
+</div>
+
+<!-- 协议扫描器 -->
+<div class="section">
+    <h3>协议扫描器</h3>
+    <div class="protocol-grid">
+        <!-- HTTP -->
+        <div class="protocol-card">
+            <div class="protocol-header">
+                <span class="protocol-icon">🌐</span>
+                <span class="protocol-name">HTTP 代理</span>
+                <span class="protocol-status" id="http-status">未启动</span>
+            </div>
+            <div class="protocol-body">
+                <p>扫描 HTTP/HTTPS 下载文件，使用 Squid + c-icap + ClamAV</p>
+                <div class="protocol-ports">端口: 3128 (代理), 80/443 (透明)</div>
+            </div>
+            <div class="protocol-actions">
+                <button class="btn btn-sm btn-primary" id="btn-http-start">启动</button>
+                <button class="btn btn-sm btn-secondary" id="btn-http-stop">停止</button>
+                <button class="btn btn-sm btn-outline" id="btn-http-config">配置</button>
+            </div>
+        </div>
+
+        <!-- FTP -->
+        <div class="protocol-card">
+            <div class="protocol-header">
+                <span class="protocol-icon">📁</span>
+                <span class="protocol-name">FTP 服务</span>
+                <span class="protocol-status" id="ftp-status">未启动</span>
+            </div>
+            <div class="protocol-body">
+                <p>扫描 FTP 上传/下载文件，使用 ProFTPD + ClamAV</p>
+                <div class="protocol-ports">端口: 21 (控制), 20 (数据)</div>
+            </div>
+            <div class="protocol-actions">
+                <button class="btn btn-sm btn-primary" id="btn-ftp-start">启动</button>
+                <button class="btn btn-sm btn-secondary" id="btn-ftp-stop">停止</button>
+                <button class="btn btn-sm btn-outline" id="btn-ftp-config">配置</button>
+            </div>
+        </div>
+
+        <!-- SMTP -->
+        <div class="protocol-card">
+            <div class="protocol-header">
+                <span class="protocol-icon">📧</span>
+                <span class="protocol-name">SMTP 邮件</span>
+                <span class="protocol-status" id="smtp-status">未启动</span>
+            </div>
+            <div class="protocol-body">
+                <p>扫描邮件附件，使用 Postfix + amavisd-new + ClamAV</p>
+                <div class="protocol-ports">端口: 25 (SMTP), 587 (提交), 465 (SMTPS)</div>
+            </div>
+            <div class="protocol-actions">
+                <button class="btn btn-sm btn-primary" id="btn-smtp-start">启动</button>
+                <button class="btn btn-sm btn-secondary" id="btn-smtp-stop">停止</button>
+                <button class="btn btn-sm btn-outline" id="btn-smtp-config">配置</button>
+            </div>
+        </div>
+
+        <!-- SMB -->
+        <div class="protocol-card">
+            <div class="protocol-header">
+                <span class="protocol-icon">💾</span>
+                <span class="protocol-name">SMB 共享</span>
+                <span class="protocol-status" id="smb-status">未启动</span>
+            </div>
+            <div class="protocol-body">
+                <p>扫描 SMB 文件共享，使用 Samba + ClamAV VFS</p>
+                <div class="protocol-ports">端口: 445 (SMB), 139 (NetBIOS)</div>
+            </div>
+            <div class="protocol-actions">
+                <button class="btn btn-sm btn-primary" id="btn-smb-start">启动</button>
+                <button class="btn btn-sm btn-secondary" id="btn-smb-stop">停止</button>
+                <button class="btn btn-sm btn-outline" id="btn-smb-config">配置</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 配置弹窗 -->
+<div class="modal-overlay" id="config-modal" style="display:none;">
+    <div class="modal-content" style="max-width:500px;">
+        <div class="modal-header">
+            <h3 id="config-modal-title">协议配置</h3>
+            <button class="modal-close" id="config-modal-close">&times;</button>
+        </div>
+        <div class="modal-body" id="config-modal-body">
+            <!-- 动态填充 -->
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" id="config-modal-cancel">取消</button>
+            <button class="btn btn-primary" id="config-modal-save">保存配置</button>
+        </div>
+    </div>
+</div>
+
+<!-- 全局配置 -->
+<div class="section">
+    <h3>全局配置</h3>
+    <div class="config-grid">
+        <div class="config-item">
+            <label>启用病毒扫描</label>
+            <input type="checkbox" id="config-enabled" checked>
+        </div>
+        <div class="config-item">
+            <label>阻断感染文件</label>
+            <input type="checkbox" id="config-block" checked>
+        </div>
+        <div class="config-item">
+            <label>最大扫描文件 (MB)</label>
+            <input type="number" id="config-maxsize" value="50" min="1" max="500">
+        </div>
+        <div class="config-item">
+            <button class="btn btn-primary" id="btn-update-db">更新病毒库</button>
+            <button class="btn btn-secondary" id="btn-clear-stats">清除统计</button>
+        </div>
+    </div>
+</div>
+
+<!-- 病毒日志 -->
+<div class="section">
+    <h3>病毒检测日志</h3>
+    <div class="filter-bar">
+        <select id="log-protocol">
+            <option value="">全部协议</option>
+            <option value="http">HTTP</option>
+            <option value="ftp">FTP</option>
+            <option value="smtp">SMTP</option>
+            <option value="smb">SMB</option>
+        </select>
+        <button class="btn btn-sm btn-outline" id="btn-refresh-logs">刷新</button>
+    </div>
+    <table class="data-table" id="virus-log-table">
+        <thead>
+            <tr>
+                <th>时间</th>
+                <th>协议</th>
+                <th>源IP</th>
+                <th>文件名</th>
+                <th>病毒名称</th>
+                <th>动作</th>
+            </tr>
+        </thead>
+        <tbody id="virus-log-body">
+            <tr><td colspan="6" class="text-center">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<style>
+.protocol-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.protocol-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.protocol-header { display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: var(--bg-secondary); }
+.protocol-icon { font-size: 24px; }
+.protocol-name { font-weight: 600; flex: 1; }
+.protocol-status { font-size: 12px; padding: 2px 8px; border-radius: 4px; background: var(--bg-tertiary); }
+.protocol-status.running { background: var(--success); color: white; }
+.protocol-body { padding: 12px 16px; }
+.protocol-body p { margin: 0 0 8px; font-size: 13px; color: var(--text-muted); }
+.protocol-ports { font-size: 12px; color: var(--text-secondary); }
+.protocol-actions { padding: 12px 16px; display: flex; gap: 8px; border-top: 1px solid var(--border); }
+.config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; align-items: end; }
+.config-item label { display: block; margin-bottom: 4px; font-size: 13px; color: var(--text-secondary); }
+.config-item input[type="number"] { width: 100px; padding: 6px 8px; }
+.filter-bar { display: flex; gap: 8px; margin-bottom: 12px; }
+.filter-bar select { padding: 6px 12px; background: var(--input-bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); }
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9000; display: flex; align-items: center; justify-content: center; }
+.modal-content { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; width: 90%; max-width: 500px; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid var(--border); }
+.modal-header h3 { margin: 0; font-size: 16px; }
+.modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-muted); }
+.modal-body { padding: 16px; }
+.modal-body .form-group { margin-bottom: 12px; }
+.modal-body label { display: block; margin-bottom: 4px; font-size: 13px; color: var(--text-secondary); }
+.modal-body input, .modal-body select { width: 100%; padding: 6px 8px; background: var(--input-bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); box-sizing: border-box; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
+</style>
+
+<script>
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+(function() {
+    'use strict';
+
+    // ===== 通用 API 请求（带错误处理和CSRF token） =====
+    function getCsrfToken() {
+        // 从meta标签获取CSRF token
+        var meta = document.querySelector('meta[name="csrf-token"]');
+        if (meta) return meta.getAttribute('content');
+        // 从cookie获取
+        var match = document.cookie.match(/csrf_token=([^;]+)/);
+        return match ? match[1] : '';
+    }
+
+    function apiPost(url) {
+        var headers = {'Content-Type': 'application/json'};
+        var csrfToken = getCsrfToken();
+        if (csrfToken) {
+            headers['X-CSRFToken'] = csrfToken;
+        }
+        return fetch(url, {method: 'POST', headers: headers, credentials: 'same-origin'})
+            .then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            });
+    }
+
+    function apiGet(url) {
+        return fetch(url, {credentials: 'same-origin'})
+            .then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            });
+    }
+
+    // ===== Toast 通知（使用 main.js 的 showNotification） =====
+    function toast(msg, type) {
+        if (typeof showNotification === 'function') {
+            showNotification(msg, type || 'info');
+        } else {
+            alert(msg);
+        }
+    }
+
+    // ===== 更新协议状态显示 =====
+    function updateProtocolStatus(elId, data) {
+        var el = document.getElementById(elId);
+        if (!el) return;
+        if (data && data.enabled) {
+            el.textContent = '运行中';
+            el.className = 'protocol-status running';
+        } else {
+            el.textContent = '未启动';
+            el.className = 'protocol-status';
+        }
+    }
+
+    // ===== 加载统计 =====
+    function loadStats() {
+        apiGet('/gateway_av/api/stats').then(function(data) {
+            if (data.status === 'ok' && data.data) {
+                var s = data.data;
+                document.getElementById('stat-total').textContent = s.total_scanned || 0;
+                document.getElementById('stat-infected').textContent = s.infected_found || 0;
+                document.getElementById('stat-blocked').textContent = s.blocked || 0;
+                document.getElementById('stat-errors').textContent = s.errors || 0;
+            }
+        }).catch(function() {});
+    }
+
+    // ===== 加载状态 =====
+    function loadStatus() {
+        apiGet('/gateway_av/api/http/status').then(function(data) {
+            if (data.status === 'ok') updateProtocolStatus('http-status', data.data);
+        }).catch(function() {});
+        apiGet('/gateway_av/api/ftp/status').then(function(data) {
+            if (data.status === 'ok') updateProtocolStatus('ftp-status', data.data);
+        }).catch(function() {});
+        apiGet('/gateway_av/api/smtp/status').then(function(data) {
+            if (data.status === 'ok') updateProtocolStatus('smtp-status', data.data);
+        }).catch(function() {});
+        apiGet('/gateway_av/api/smb/status').then(function(data) {
+            if (data.status === 'ok') updateProtocolStatus('smb-status', data.data);
+        }).catch(function() {});
+    }
+
+    // ===== 加载日志 =====
+    function loadLogs() {
+        var proto = document.getElementById('log-protocol').value;
+        apiGet('/gateway_av/api/logs?limit=50&protocol=' + encodeURIComponent(proto)).then(function(data) {
+            var tbody = document.getElementById('virus-log-body');
+            if (data.status === 'ok' && data.data && data.data.length > 0) {
+                tbody.innerHTML = data.data.map(function(log) {
+                    var actionClass = log.action === 'blocked' ? 'danger' : 'success';
+                    return '<tr>' +
+                        '<td>' + (log.timestamp || '-') + '</td>' +
+                        '<td>' + (log.protocol || '-') + '</td>' +
+                        '<td>' + (log.src_ip || '-') + '</td>' +
+                        '<td>' + (log.file_name || '-') + '</td>' +
+                        '<td class="text-danger">' + (log.virus_name || '-') + '</td>' +
+                        '<td><span class="badge badge-' + actionClass + '">' + (log.action || '-') + '</span></td>' +
+                        '</tr>';
+                }).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">暂无数据</td></tr>';
+            }
+        }).catch(function() {
+            document.getElementById('virus-log-body').innerHTML =
+                '<tr><td colspan="6" class="text-center text-muted">加载失败</td></tr>';
+        });
+    }
+
+    // ===== 加载配置 =====
+    function loadConfig() {
+        apiGet('/gateway_av/api/config').then(function(data) {
+            if (data.status === 'ok' && data.data) {
+                document.getElementById('config-enabled').checked = !!data.data.enabled;
+                document.getElementById('config-block').checked = !!data.data.block_infected;
+                document.getElementById('config-maxsize').value = data.data.max_file_size_mb || 50;
+            }
+        }).catch(function() {});
+    }
+
+    // ===== 保存配置 =====
+    function saveConfig() {
+        var payload = {
+            enabled: document.getElementById('config-enabled').checked,
+            block_infected: document.getElementById('config-block').checked,
+            max_file_size_mb: parseInt(document.getElementById('config-maxsize').value) || 50
+        };
+        fetch('/gateway_av/api/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        }).then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(function(data) {
+            if (data.status === 'ok') {
+                toast('配置已保存', 'success');
+            } else {
+                toast(data.message || '保存失败', 'error');
+            }
+        }).catch(function(e) {
+            toast('请求失败: ' + e.message, 'error');
+        });
+    }
+
+    // ===== 协议控制函数 =====
+    function controlProtocol(protocol, action) {
+        var nameMap = {http: 'HTTP', ftp: 'FTP', smtp: 'SMTP', smb: 'SMB'};
+        var label = nameMap[protocol] || protocol;
+        var actionLabel = action === 'start' ? '启动' : '停止';
+
+        toast('正在' + actionLabel + ' ' + label + ' 扫描器...', 'info');
+
+        apiPost('/gateway_av/api/' + protocol + '/' + action).then(function(data) {
+            if (data.status === 'ok') {
+                toast(label + ' 扫描器已' + actionLabel, 'success');
+            } else {
+                var msg = (data.message || data.data || actionLabel + '失败');
+                toast(msg, 'error');
+            }
+            loadStatus();
+        }).catch(function(e) {
+            toast(label + ' ' + actionLabel + '请求失败: ' + e.message, 'error');
+        });
+    }
+
+    // ===== 更新病毒库 =====
+    function updateVirusDB() {
+        toast('正在更新病毒库...', 'info');
+        apiPost('/gateway_av/api/update').then(function(data) {
+            if (data.status === 'ok') {
+                toast('病毒库更新完成', 'success');
+            } else {
+                toast(data.message || data.data || '更新失败', 'error');
+            }
+        }).catch(function(e) {
+            toast('更新病毒库失败: ' + e.message, 'error');
+        });
+    }
+
+    // ===== 清除统计 =====
+    function clearStats() {
+        apiPost('/gateway_av/api/stats/clear').then(function(data) {
+            if (data.status === 'ok') {
+                toast('统计已清除', 'success');
+                loadStats();
+            } else {
+                toast(data.message || '清除失败', 'error');
+            }
+        }).catch(function(e) {
+            toast('清除统计失败: ' + e.message, 'error');
+        });
+    }
+
+    // ===== 协议配置弹窗 =====
+    var currentConfigProtocol = null;
+
+    var protocolConfigForms = {
+        http: {
+            title: 'HTTP 代理配置',
+            fields: [
+                {id: 'http-listen-port', label: '代理监听端口', type: 'number', value: '3128'}
+            ]
+        },
+        ftp: {
+            title: 'FTP 服务配置',
+            fields: [
+                {id: 'ftp-listen-port', label: 'FTP 监听端口', type: 'number', value: '21'}
+            ]
+        },
+        smtp: {
+            title: 'SMTP 邮件配置',
+            fields: [
+                {id: 'smtp-domain', label: '邮件域名', type: 'text', value: 'gatekeeper.local'},
+                {id: 'smtp-hostname', label: '邮件主机名', type: 'text', value: 'mail'}
+            ]
+        },
+        smb: {
+            title: 'SMB 共享配置',
+            fields: [
+                {id: 'smb-workgroup', label: '工作组', type: 'text', value: 'WORKGROUP'},
+                {id: 'smb-share-name', label: '共享名称', type: 'text', value: 'shared'},
+                {id: 'smb-share-path', label: '共享路径', type: 'text', value: '/srv/samba/shared'}
+            ]
+        }
+    };
+
+    function openConfigModal(protocol) {
+        var config = protocolConfigForms[protocol];
+        if (!config) return;
+        currentConfigProtocol = protocol;
+
+        document.getElementById('config-modal-title').textContent = config.title;
+        var body = document.getElementById('config-modal-body');
+        body.innerHTML = config.fields.map(function(f) {
+            return '<div class="form-group">' +
+                '<label for="' + f.id + '">' + f.label + '</label>' +
+                '<input type="' + f.type + '" id="' + f.id + '" value="' + f.value + '">' +
+                '</div>';
+        }).join('');
+
+        document.getElementById('config-modal').style.display = 'flex';
+    }
+
+    function closeConfigModal() {
+        document.getElementById('config-modal').style.display = 'none';
+        currentConfigProtocol = null;
+    }
+
+    function saveProtocolConfig() {
+        if (!currentConfigProtocol) return;
+        var proto = currentConfigProtocol;
+        var payload = {};
+
+        // 收集表单值
+        protocolConfigForms[proto].fields.forEach(function(f) {
+            var el = document.getElementById(f.id);
+            if (el) payload[f.id] = el.value;
+        });
+
+        toast('正在保存 ' + proto.toUpperCase() + ' 配置...', 'info');
+
+        fetch('/gateway_av/api/' + proto + '/configure', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        }).then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(function(data) {
+            if (data.status === 'ok') {
+                toast(proto.toUpperCase() + ' 配置已保存', 'success');
+                closeConfigModal();
+            } else {
+                toast(data.message || '配置保存失败', 'error');
+            }
+        }).catch(function(e) {
+            toast('配置请求失败: ' + e.message, 'error');
+        });
+    }
+
+    // ===== DOM Ready 后绑定事件 =====
+    document.addEventListener('DOMContentLoaded', function() {
+        // 协议启动/停止/配置按钮
+        var protocols = ['http', 'ftp', 'smtp', 'smb'];
+        protocols.forEach(function(proto) {
+            var startBtn = document.getElementById('btn-' + proto + '-start');
+            var stopBtn = document.getElementById('btn-' + proto + '-stop');
+            var configBtn = document.getElementById('btn-' + proto + '-config');
+            if (startBtn) startBtn.addEventListener('click', function() { controlProtocol(proto, 'start'); });
+            if (stopBtn) stopBtn.addEventListener('click', function() { controlProtocol(proto, 'stop'); });
+            if (configBtn) configBtn.addEventListener('click', function() { openConfigModal(proto); });
+        });
+
+        // 配置弹窗按钮
+        document.getElementById('config-modal-close').addEventListener('click', closeConfigModal);
+        document.getElementById('config-modal-cancel').addEventListener('click', closeConfigModal);
+        document.getElementById('config-modal-save').addEventListener('click', saveProtocolConfig);
+        document.getElementById('config-modal').addEventListener('click', function(e) {
+            if (e.target === this) closeConfigModal();
+        });
+
+        // 全局配置
+        document.getElementById('btn-update-db').addEventListener('click', updateVirusDB);
+        document.getElementById('btn-clear-stats').addEventListener('click', clearStats);
+        document.getElementById('log-protocol').addEventListener('change', loadLogs);
+        document.getElementById('btn-refresh-logs').addEventListener('click', loadLogs);
+
+        // 配置变更自动保存（防抖）
+        var configTimer = null;
+        ['config-enabled', 'config-block', 'config-maxsize'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('change', function() {
+                    clearTimeout(configTimer);
+                    configTimer = setTimeout(saveConfig, 500);
+                });
+            }
+        });
+
+        // 初始化数据加载
+        loadStats();
+        loadStatus();
+        loadLogs();
+        loadConfig();
+
+        // 定时刷新统计
+        setInterval(loadStats, 10000);
+    });
+})();
+</script>
+{% endblock %}

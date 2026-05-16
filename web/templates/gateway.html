@@ -1,0 +1,1210 @@
+{% extends "base.html" %}
+
+{% block title %}网关管理{% endblock %}
+
+{% block content %}
+<!-- 状态概览 -->
+<div class="status-grid">
+    <div class="status-card" id="gw-status-card">
+        <h3>网关状态</h3>
+        <div class="value" id="gw-status">-</div>
+    </div>
+    <div class="status-card">
+        <h3>WAN接口</h3>
+        <div class="value" id="wan-interface">-</div>
+    </div>
+    <div class="status-card">
+        <h3>LAN接口</h3>
+        <div class="value" id="lan-interface">-</div>
+    </div>
+    <div class="status-card">
+        <h3>DHCP子网</h3>
+        <div class="value" id="dhcp-subnets">-</div>
+    </div>
+    <div class="status-card">
+        <h3>活跃租约</h3>
+        <div class="value" id="active-leases">-</div>
+    </div>
+    <div class="status-card">
+        <h3>VLAN子网</h3>
+        <div class="value" id="vlan-subnets">-</div>
+    </div>
+</div>
+
+<!-- 网关配置 -->
+<div class="section">
+    <h2>⚙️ 网关配置</h2>
+    <div class="form-row">
+        <div class="form-group">
+            <label>WAN接口 (外网)</label>
+            <select id="wan-iface"></select>
+        </div>
+        <div class="form-group">
+            <label>LAN接口 (内网)</label>
+            <select id="lan-iface"></select>
+        </div>
+        <div class="form-group">
+            <label>LAN网络</label>
+            <input type="text" id="lan-network" value="192.168.1.0/24" placeholder="192.168.1.0/24">
+        </div>
+    </div>
+    <button class="btn btn-success" onclick="enableGateway()">启用网关</button>
+    <button class="btn btn-danger" onclick="disableGateway()">禁用网关</button>
+</div>
+
+<!-- WAN上联接口管理 -->
+<div class="section">
+    <h2>🌐 WAN上联接口</h2>
+
+    <!-- WAN状态 -->
+    <div class="status-grid" style="margin-bottom: 20px;">
+        <div class="status-card" id="wan-conn-card">
+            <h3>连接状态</h3>
+            <div class="value" id="wan-conn-status">-</div>
+        </div>
+        <div class="status-card">
+            <h3>连接方式</h3>
+            <div class="value" id="wan-mode">-</div>
+        </div>
+        <div class="status-card">
+            <h3>WAN IP</h3>
+            <div class="value" id="wan-ip">-</div>
+        </div>
+        <div class="status-card">
+            <h3>网关</h3>
+            <div class="value" id="wan-gw">-</div>
+        </div>
+        <div class="status-card">
+            <h3>DNS</h3>
+            <div class="value" id="wan-dns" style="font-size: 12px;">-</div>
+        </div>
+        <div class="status-card">
+            <h3>连接时间</h3>
+            <div class="value" id="wan-uptime" style="font-size: 12px;">-</div>
+        </div>
+    </div>
+
+    <!-- WAN连接方式选择 -->
+    <div class="form-row">
+        <div class="form-group">
+            <label>连接方式</label>
+            <select id="wan-connect-mode" onchange="onWanModeChange()">
+                <option value="dhcp">DHCP自动获取</option>
+                <option value="pppoe">PPPoE拨号</option>
+                <option value="static">静态IP</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>物理接口</label>
+            <select id="wan-physical-iface"></select>
+        </div>
+    </div>
+
+    <!-- DHCP配置 -->
+    <div id="wan-dhcp-config">
+        <p style="color: var(--text-muted); font-size: 13px; margin: 10px 0;">
+            通过DHCP自动从上游设备获取IP地址、网关和DNS。适用于光猫路由、DHCP服务器等环境。
+        </p>
+    </div>
+
+    <!-- PPPoE配置 -->
+    <div id="wan-pppoe-config" style="display: none;">
+        <div class="form-row">
+            <div class="form-group">
+                <label>PPPoE用户名 *</label>
+                <input type="text" id="pppoe-username" placeholder="运营商提供的用户名">
+            </div>
+            <div class="form-group">
+                <label>PPPoE密码 *</label>
+                <input type="password" id="pppoe-password" placeholder="运营商提供的密码">
+            </div>
+            <div class="form-group">
+                <label>MTU</label>
+                <input type="number" id="pppoe-mtu" value="1492" min="576" max="1500">
+                <span class="help-text">默认1492，如遇网页打不开可尝试1480</span>
+            </div>
+        </div>
+        <div class="form-group" style="margin-bottom: 15px;">
+            <label style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" id="pppoe-auto-reconnect" checked>
+                断线自动重连
+            </label>
+        </div>
+    </div>
+
+    <!-- 静态IP配置 -->
+    <div id="wan-static-config" style="display: none;">
+        <div class="form-row">
+            <div class="form-group">
+                <label>IP地址 *</label>
+                <input type="text" id="static-ip" placeholder="10.0.0.2">
+            </div>
+            <div class="form-group">
+                <label>子网掩码 *</label>
+                <input type="text" id="static-netmask" value="255.255.255.0" placeholder="255.255.255.0">
+            </div>
+            <div class="form-group">
+                <label>网关地址 *</label>
+                <input type="text" id="static-gateway" placeholder="10.0.0.1">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>DNS服务器</label>
+            <input type="text" id="static-dns" value="8.8.8.8, 8.8.4.4" placeholder="8.8.8.8, 8.8.4.4">
+            <span class="help-text">多个DNS用逗号分隔</span>
+        </div>
+    </div>
+
+    <div style="margin-top: 15px;">
+        <button class="btn btn-primary" onclick="saveWanConfig()">保存配置</button>
+        <button class="btn btn-success" onclick="connectWan()">连接</button>
+        <button class="btn btn-danger" onclick="disconnectWan()">断开</button>
+    </div>
+</div>
+
+<!-- DHCP管理标签页 -->
+<div class="section">
+    <h2>📡 DHCP服务器 - 多网段管理</h2>
+
+    <div class="tabs">
+        <div class="tab active" onclick="switchTab('subnets')">子网管理</div>
+        <div class="tab" onclick="switchTab('leases')">租约列表</div>
+        <div class="tab" onclick="switchTab('statistics')">统计信息</div>
+    </div>
+
+    <!-- 子网管理 -->
+    <div id="tab-subnets" class="tab-content active">
+        <button class="btn btn-primary" onclick="showAddSubnetModal()">+ 添加子网</button>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>名称</th>
+                    <th>网络</th>
+                    <th>IP范围</th>
+                    <th>接口</th>
+                    <th>VLAN</th>
+                    <th>租约</th>
+                    <th>使用率</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="subnet-list">
+                <tr><td colspan="9" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 租约列表 -->
+    <div id="tab-leases" class="tab-content">
+        <table>
+            <thead>
+                <tr>
+                    <th>IP地址</th>
+                    <th>MAC地址</th>
+                    <th>主机名</th>
+                    <th>子网</th>
+                    <th>租约时间</th>
+                </tr>
+            </thead>
+            <tbody id="lease-list">
+                <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 统计信息 -->
+    <div id="tab-statistics" class="tab-content">
+        <div class="status-grid">
+            <div class="status-card">
+                <h3>总子网数</h3>
+                <div class="value" id="stat-total-subnets">0</div>
+            </div>
+            <div class="status-card">
+                <h3>启用子网</h3>
+                <div class="value" id="stat-enabled-subnets">0</div>
+            </div>
+            <div class="status-card">
+                <h3>VLAN子网</h3>
+                <div class="value" id="stat-vlan-subnets">0</div>
+            </div>
+            <div class="status-card">
+                <h3>总租约数</h3>
+                <div class="value" id="stat-total-leases">0</div>
+            </div>
+            <div class="status-card">
+                <h3>活跃租约</h3>
+                <div class="value" id="stat-active-leases">0</div>
+            </div>
+        </div>
+
+        <h3 style="color: var(--text-muted); margin: 20px 0 10px;">各子网使用情况</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>子网名称</th>
+                    <th>网络</th>
+                    <th>VLAN</th>
+                    <th>活跃租约</th>
+                    <th>使用率</th>
+                </tr>
+            </thead>
+            <tbody id="subnet-stats">
+                <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- DNS配置 -->
+<div class="section">
+    <h2>🔍 DNS转发</h2>
+    <div class="form-row">
+        <div class="form-group">
+            <label>启用DNS转发</label>
+            <label class="toggle-switch">
+                <input type="checkbox" id="dns-enabled" checked>
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="form-group">
+            <label>上游DNS服务器</label>
+            <input type="text" id="dns-upstream" value="8.8.8.8, 8.8.4.4" placeholder="8.8.8.8, 8.8.4.4">
+        </div>
+    </div>
+    <button class="btn btn-primary" onclick="saveDnsConfig()">保存DNS配置</button>
+</div>
+
+<!-- 网络测速 -->
+<div class="section">
+    <h2>⚡ 网络测速</h2>
+
+    <div class="status-grid" style="margin-bottom: 15px;">
+        <div class="status-card">
+            <h3>下载速度</h3>
+            <div class="value" id="st-download" style="color: #86efac;">-</div>
+        </div>
+        <div class="status-card">
+            <h3>上传速度</h3>
+            <div class="value" id="st-upload" style="color: var(--primary);">-</div>
+        </div>
+        <div class="status-card">
+            <h3>延迟</h3>
+            <div class="value" id="st-latency">-</div>
+        </div>
+        <div class="status-card">
+            <h3>抖动</h3>
+            <div class="value" id="st-jitter">-</div>
+        </div>
+        <div class="status-card">
+            <h3>丢包率</h3>
+            <div class="value" id="st-loss">-</div>
+        </div>
+        <div class="status-card">
+            <h3>测速目标</h3>
+            <div class="value" id="st-target" style="font-size: 12px;">-</div>
+        </div>
+    </div>
+
+    <div style="margin-bottom: 15px;">
+        <div id="st-progress" style="display: none; margin-bottom: 10px;">
+            <div style="background: var(--border); border-radius: 4px; height: 8px; overflow: hidden;">
+                <div id="st-progress-bar" style="background: var(--primary); height: 100%; width: 0%; transition: width 0.3s;"></div>
+            </div>
+            <span id="st-progress-text" style="font-size: 12px; color: var(--text-muted);">准备中...</span>
+        </div>
+        <span id="st-error" style="color: #fca5a5; display: none; font-size: 13px;"></span>
+    </div>
+
+    <div class="form-row" style="margin-bottom: 15px;">
+        <div class="form-group">
+            <label>测速目标</label>
+            <select id="st-server">
+                <option value="">自动选择</option>
+            </select>
+        </div>
+    </div>
+
+    <button class="btn btn-primary" id="st-start-btn" onclick="startSpeedTest()">开始测速</button>
+    <button class="btn btn-danger" id="st-cancel-btn" onclick="cancelSpeedTest()" style="display: none;">取消测速</button>
+</div>
+
+<!-- 端口转发 -->
+<div class="section">
+    <h2>🔀 端口转发 (DNAT)</h2>
+    <div class="form-row">
+        <div class="form-group">
+            <label>名称</label>
+            <input type="text" id="pf-name" placeholder="web-server">
+        </div>
+        <div class="form-group">
+            <label>协议</label>
+            <select id="pf-protocol">
+                <option value="tcp">TCP</option>
+                <option value="udp">UDP</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>外部端口</label>
+            <input type="number" id="pf-ext-port" placeholder="8080">
+        </div>
+        <div class="form-group">
+            <label>内部IP</label>
+            <input type="text" id="pf-int-ip" placeholder="192.168.1.10">
+        </div>
+        <div class="form-group">
+            <label>内部端口</label>
+            <input type="number" id="pf-int-port" placeholder="80">
+        </div>
+    </div>
+    <button class="btn btn-primary" onclick="addPortForward()">添加端口转发</button>
+
+    <table>
+        <thead>
+            <tr>
+                <th>名称</th>
+                <th>协议</th>
+                <th>外部端口</th>
+                <th>内部地址</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="port-forwards">
+            <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- 添加子网模态框 -->
+<div class="modal" id="subnet-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="modal-title">添加DHCP子网</h3>
+            <button class="modal-close" onclick="closeSubnetModal()">&times;</button>
+        </div>
+        <form id="subnet-form">
+            <input type="hidden" id="subnet-id">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>子网名称 *</label>
+                    <input type="text" id="subnet-name" placeholder="如：办公网、访客网" required>
+                </div>
+                <div class="form-group">
+                    <label>网络地址 *</label>
+                    <input type="text" id="subnet-network" placeholder="192.168.1.0/24" required>
+                    <span class="help-text">CIDR格式，如 192.168.1.0/24</span>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>网关地址 *</label>
+                    <input type="text" id="subnet-gateway" placeholder="192.168.1.1" required>
+                </div>
+                <div class="form-group">
+                    <label>绑定接口 *</label>
+                    <select id="subnet-interface" required></select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>DHCP起始IP *</label>
+                    <input type="text" id="subnet-start-ip" placeholder="192.168.1.100" required>
+                </div>
+                <div class="form-group">
+                    <label>DHCP结束IP *</label>
+                    <input type="text" id="subnet-end-ip" placeholder="192.168.1.200" required>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>VLAN ID</label>
+                    <input type="number" id="subnet-vlan-id" placeholder="留空表示无VLAN" min="1" max="4094">
+                    <span class="help-text">范围：1-4094，留空表示不使用VLAN</span>
+                </div>
+                <div class="form-group">
+                    <label>租约时间（秒）</label>
+                    <input type="number" id="subnet-lease-time" value="86400" min="60">
+                    <span class="help-text">默认86400秒（24小时）</span>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>DNS服务器</label>
+                    <input type="text" id="subnet-dns" placeholder="8.8.8.8, 8.8.4.4">
+                    <span class="help-text">多个DNS用逗号分隔</span>
+                </div>
+                <div class="form-group">
+                    <label>优先级</label>
+                    <input type="number" id="subnet-priority" value="100" min="1">
+                    <span class="help-text">数字越小优先级越高</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>描述</label>
+                <textarea id="subnet-description" rows="2" placeholder="子网描述（可选）"></textarea>
+            </div>
+            <div style="margin-top: 20px;">
+                <button type="submit" class="btn btn-success">保存</button>
+                <button type="button" class="btn btn-danger" onclick="closeSubnetModal()">取消</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .section {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .section h2 { color: var(--primary); margin-bottom: 15px; font-size: 18px; }
+    .status-card.active .value { color: #86efac; }
+    .status-card.inactive .value { color: #fca5a5; }
+    .status-card.warning .value { color: #fcd34d; }
+    .form-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+    .form-group { display: flex; flex-direction: column; }
+    .form-group label { color: var(--text-muted); margin-bottom: 5px; font-size: 14px; }
+    .form-group input, .form-group select, .form-group textarea {
+        padding: 10px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-size: 14px;
+    }
+    .form-group input:focus, .form-group select:focus {
+        border-color: var(--primary);
+        outline: none;
+    }
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        margin-right: 10px;
+        margin-bottom: 10px;
+    }
+    .btn-primary { background: var(--primary); color: var(--bg-card); }
+    .btn-success { background: #86efac; color: var(--bg-card); }
+    .btn-danger { background: #fca5a5; color: var(--bg-card); }
+    .btn-warning { background: #fcd34d; color: var(--bg-card); }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+    .btn:hover { opacity: 0.9; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--text-muted); font-weight: 600; font-size: 13px; }
+    tr:hover { background: var(--bg-card); }
+    .toggle-switch {
+        position: relative;
+        width: 50px;
+        height: 26px;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background-color: var(--border);
+        transition: .3s;
+        border-radius: 26px;
+    }
+    .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 20px;
+        width: 20px;
+        left: 3px;
+        bottom: 3px;
+        background-color: white;
+        transition: .3s;
+        border-radius: 50%;
+    }
+    input:checked + .toggle-slider { background-color: #86efac; }
+    input:checked + .toggle-slider:before { transform: translateX(24px); }
+    .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+    .tab {
+        padding: 10px 20px;
+        cursor: pointer;
+        color: var(--text-muted);
+        border-bottom: 2px solid transparent;
+    }
+    .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+    .tab:hover { color: var(--text); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.7);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+    }
+    .modal.show { display: flex; }
+    .modal-content {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+        width: 90%;
+        max-width: 600px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .modal-header h3 { color: var(--primary); }
+    .modal-close { background: none; border: none; color: var(--text-muted); font-size: 24px; cursor: pointer; }
+    .vlan-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        background: var(--primary);
+        color: var(--bg-card);
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    .usage-bar {
+        width: 100px;
+        height: 8px;
+        background: var(--border);
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    .usage-bar-fill {
+        height: 100%;
+        background: #86efac;
+        transition: width 0.3s;
+    }
+    .usage-bar-fill.warning { background: #fcd34d; }
+    .usage-bar-fill.danger { background: #fca5a5; }
+    .help-text { color: var(--text-muted); font-size: 12px; margin-top: 5px; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// 标签页切换
+    function switchTab(tabName) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+        document.querySelector(`.tab[onclick="switchTab('${tabName}')"]`).classList.add('active');
+        document.getElementById(`tab-${tabName}`).classList.add('active');
+
+        if (tabName === 'statistics') loadDhcpStatistics();
+        if (tabName === 'leases') loadDhcpLeases();
+    }
+
+    // 加载状态
+    function loadStatus() {
+        fetch('/gateway/api/status')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const d = data.data;
+                    document.getElementById('gw-status').textContent = d.enabled ? '已启用' : '未启用';
+                    document.getElementById('gw-status-card').className = 'status-card ' + (d.enabled ? 'active' : 'inactive');
+                    document.getElementById('wan-interface').textContent = d.wan_interface || '-';
+                    document.getElementById('lan-interface').textContent = d.lan_interface || '-';
+                    document.getElementById('dhcp-leases').textContent = d.dhcp?.active_leases || 0;
+                }
+            })
+            .catch(e => {
+                console.error('loadStatus failed:', e);
+                document.getElementById('gw-status').textContent = '加载失败';
+            });
+    }
+
+    // 加载DHCP统计
+    function loadDhcpStatistics() {
+        fetch('/gateway/api/dhcp/statistics')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const d = data.data;
+                    document.getElementById('stat-total-subnets').textContent = d.total_subnets;
+                    document.getElementById('stat-enabled-subnets').textContent = d.enabled_subnets;
+                    document.getElementById('stat-vlan-subnets').textContent = d.vlan_subnets;
+                    document.getElementById('stat-total-leases').textContent = d.total_leases;
+                    document.getElementById('stat-active-leases').textContent = d.active_leases;
+
+                    // 更新顶部状态
+                    document.getElementById('dhcp-subnets').textContent = d.total_subnets;
+                    document.getElementById('active-leases').textContent = d.active_leases;
+                    document.getElementById('vlan-subnets').textContent = d.vlan_subnets;
+
+                    // 子网统计表
+                    const tbody = document.getElementById('subnet-stats');
+                    if (d.subnet_stats.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">暂无数据</td></tr>';
+                    } else {
+                        tbody.innerHTML = d.subnet_stats.map(s => `
+                            <tr>
+                                <td>${s.name}</td>
+                                <td>${s.network}</td>
+                                <td>${s.vlan_id ? '<span class="vlan-badge">VLAN ' + s.vlan_id + '</span>' : '-'}</td>
+                                <td>${s.active_leases}</td>
+                                <td>
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <div class="usage-bar">
+                                            <div class="usage-bar-fill ${s.pool_usage > 80 ? 'danger' : s.pool_usage > 50 ? 'warning' : ''}" style="width: ${s.pool_usage}%"></div>
+                                        </div>
+                                        <span>${s.pool_usage}%</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        `).join('');
+                    }
+                }
+            });
+    }
+
+    // 加载子网列表
+    function loadSubnets() {
+        fetch('/gateway/api/dhcp/subnets')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const tbody = document.getElementById('subnet-list');
+                    if (data.data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted);">暂无子网配置，点击"添加子网"创建</td></tr>';
+                    } else {
+                        tbody.innerHTML = data.data.map(s => `
+                            <tr>
+                                <td><strong>${s.name}</strong></td>
+                                <td>${s.network}</td>
+                                <td>${s.start_ip} - ${s.end_ip}</td>
+                                <td>${s.interface}${s.vlan_interface ? ' (' + s.vlan_interface + ')' : ''}</td>
+                                <td>${s.vlan_id ? '<span class="vlan-badge">VLAN ' + s.vlan_id + '</span>' : '-'}</td>
+                                <td>${s.active_leases}</td>
+                                <td>
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <div class="usage-bar">
+                                            <div class="usage-bar-fill" style="width: ${Math.min(s.active_leases / 100 * 100, 100)}%"></div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span style="color: ${s.is_enabled ? '#86efac' : '#fca5a5'}">
+                                        ${s.is_enabled ? '启用' : '禁用'}
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary" onclick="editSubnet(${s.id})">编辑</button>
+                                    <button class="btn btn-sm btn-warning" onclick="toggleSubnet(${s.id}, ${!s.is_enabled})">
+                                        ${s.is_enabled ? '禁用' : '启用'}
+                                    </button>
+                                    <button class="btn btn-sm btn-danger" onclick="deleteSubnet(${s.id})">删除</button>
+                                </td>
+                            </tr>
+                        `).join('');
+                    }
+                }
+            });
+    }
+
+    // 加载租约列表
+    function loadDhcpLeases() {
+        fetch('/gateway/api/dhcp/leases')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const tbody = document.getElementById('lease-list');
+                    if (data.data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">暂无租约</td></tr>';
+                    } else {
+                        tbody.innerHTML = data.data.map(l => `
+                            <tr>
+                                <td>${l.ip_address}</td>
+                                <td><code>${l.mac_address}</code></td>
+                                <td>${l.hostname || '-'}</td>
+                                <td>-</td>
+                                <td>${new Date(l.timestamp * 1000).toLocaleString()}</td>
+                            </tr>
+                        `).join('');
+                    }
+                }
+            });
+    }
+
+    // 加载接口列表
+    function loadInterfaces() {
+        fetch('/gateway/api/interfaces')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const ifaces = data.data;
+                    const wanSelect = document.getElementById('wan-iface');
+                    const lanSelect = document.getElementById('lan-iface');
+                    const subnetIface = document.getElementById('subnet-interface');
+                    const wanPhysicalIface = document.getElementById('wan-physical-iface');
+
+                    const options = ifaces.map(i => `<option value="${i.name}">${i.name} (${i.ip || '无IP'})</option>`).join('');
+
+                    wanSelect.innerHTML = '<option value="">选择接口</option>' + options;
+                    lanSelect.innerHTML = '<option value="">选择接口</option>' + options;
+                    subnetIface.innerHTML = '<option value="">选择接口</option>' + options;
+                    if (wanPhysicalIface) {
+                        wanPhysicalIface.innerHTML = '<option value="">选择接口</option>' + options;
+                    }
+                }
+            });
+    }
+
+    // 显示添加子网模态框
+    function showAddSubnetModal() {
+        document.getElementById('modal-title').textContent = '添加DHCP子网';
+        document.getElementById('subnet-form').reset();
+        document.getElementById('subnet-id').value = '';
+        document.getElementById('subnet-modal').classList.add('show');
+    }
+
+    // 编辑子网
+    function editSubnet(id) {
+        fetch(`/gateway/api/dhcp/subnets/${id}`)
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const s = data.data;
+                    document.getElementById('modal-title').textContent = '编辑DHCP子网';
+                    document.getElementById('subnet-id').value = s.id;
+                    document.getElementById('subnet-name').value = s.name;
+                    document.getElementById('subnet-network').value = s.network;
+                    document.getElementById('subnet-gateway').value = s.gateway;
+                    document.getElementById('subnet-start-ip').value = s.start_ip;
+                    document.getElementById('subnet-end-ip').value = s.end_ip;
+                    document.getElementById('subnet-interface').value = s.interface;
+                    document.getElementById('subnet-vlan-id').value = s.vlan_id || '';
+                    document.getElementById('subnet-lease-time').value = s.lease_time;
+                    document.getElementById('subnet-dns').value = (s.dns_servers || []).join(', ');
+                    document.getElementById('subnet-priority').value = s.priority;
+                    document.getElementById('subnet-description').value = s.description || '';
+                    document.getElementById('subnet-modal').classList.add('show');
+                }
+            });
+    }
+
+    // 关闭模态框
+    function closeSubnetModal() {
+        document.getElementById('subnet-modal').classList.remove('show');
+    }
+
+    // 保存子网
+    document.getElementById('subnet-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const id = document.getElementById('subnet-id').value;
+        const data = {
+            name: document.getElementById('subnet-name').value,
+            network: document.getElementById('subnet-network').value,
+            gateway: document.getElementById('subnet-gateway').value,
+            start_ip: document.getElementById('subnet-start-ip').value,
+            end_ip: document.getElementById('subnet-end-ip').value,
+            interface: document.getElementById('subnet-interface').value,
+            vlan_id: document.getElementById('subnet-vlan-id').value ? parseInt(document.getElementById('subnet-vlan-id').value) : null,
+            lease_time: parseInt(document.getElementById('subnet-lease-time').value),
+            dns_servers: document.getElementById('subnet-dns').value.split(',').map(s => s.trim()).filter(s => s),
+            priority: parseInt(document.getElementById('subnet-priority').value),
+            description: document.getElementById('subnet-description').value
+        };
+
+        const url = id ? `/gateway/api/dhcp/subnets/${id}` : '/gateway/api/dhcp/subnets';
+        const method = id ? 'PUT' : 'POST';
+
+        fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(result => {
+            if (result.status === 'ok') {
+                closeSubnetModal();
+                loadSubnets();
+                loadDhcpStatistics();
+                alert(result.message);
+            } else {
+                alert('错误: ' + result.message);
+            }
+        });
+    });
+
+    // 切换子网状态
+    function toggleSubnet(id, enable) {
+        fetch(`/gateway/api/dhcp/subnets/${id}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({is_enabled: enable})
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(result => {
+            if (result.status === 'ok') {
+                loadSubnets();
+            } else {
+                alert('错误: ' + result.message);
+            }
+        });
+    }
+
+    // 删除子网
+    function deleteSubnet(id) {
+        if (confirm('确定要删除这个子网吗？相关租约记录也将被删除。')) {
+            fetch(`/gateway/api/dhcp/subnets/${id}`, {method: 'DELETE'})
+                .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+                .then(result => {
+                    if (result.status === 'ok') {
+                        loadSubnets();
+                        loadDhcpStatistics();
+                    } else {
+                        alert('错误: ' + result.message);
+                    }
+                });
+        }
+    }
+
+    // 启用网关
+    function enableGateway() {
+        const wan = document.getElementById('wan-iface').value;
+        const lan = document.getElementById('lan-iface').value;
+        const network = document.getElementById('lan-network').value;
+
+        if (!wan || !lan) {
+            alert('请选择WAN和LAN接口');
+            return;
+        }
+
+        fetch('/gateway/api/enable', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({wan_interface: wan, lan_interface: lan, lan_network: network})
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            alert(data.message);
+            loadStatus();
+        });
+    }
+
+    // 禁用网关
+    function disableGateway() {
+        fetch('/gateway/api/disable', {method: 'POST'})
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                alert(data.message);
+                loadStatus();
+            });
+    }
+
+    // 保存DNS配置
+    function saveDnsConfig() {
+        const data = {
+            enabled: document.getElementById('dns-enabled').checked,
+            upstream: document.getElementById('dns-upstream').value.split(',').map(s => s.trim())
+        };
+
+        fetch('/gateway/api/dns/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(result => alert(result.message || result.status));
+    }
+
+    // 添加端口转发
+    function addPortForward() {
+        const data = {
+            name: document.getElementById('pf-name').value,
+            protocol: document.getElementById('pf-protocol').value,
+            external_port: parseInt(document.getElementById('pf-ext-port').value),
+            internal_ip: document.getElementById('pf-int-ip').value,
+            internal_port: parseInt(document.getElementById('pf-int-port').value)
+        };
+
+        fetch('/gateway/api/port-forward', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(result => {
+            alert(result.message);
+            loadPortForwards();
+        });
+    }
+
+    // 删除端口转发
+    function removePortForward(name) {
+        fetch(`/gateway/api/port-forward/${name}`, {method: 'DELETE'})
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(() => loadPortForwards());
+    }
+
+    // 加载端口转发列表
+    function loadPortForwards() {
+        fetch('/gateway/api/port-forward')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const tbody = document.getElementById('port-forwards');
+                    if (data.data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">暂无端口转发</td></tr>';
+                    } else {
+                        tbody.innerHTML = data.data.map(pf => `
+                            <tr>
+                                <td>${pf.name}</td>
+                                <td>${pf.protocol.toUpperCase()}</td>
+                                <td>${pf.external_port}</td>
+                                <td>${pf.destination}</td>
+                                <td><button class="btn btn-sm btn-danger" onclick="removePortForward('${pf.name}')">删除</button></td>
+                            </tr>
+                        `).join('');
+                    }
+                }
+            });
+    }
+
+    // 初始化
+    document.addEventListener('DOMContentLoaded', function() {
+        loadStatus();
+        loadInterfaces();
+        loadSubnets();
+        loadDhcpStatistics();
+        loadPortForwards();
+        loadWanStatus();
+        loadSpeedtestServers();
+    });
+
+    // ========== 测速模块 ==========
+
+    let stPollTimer = null;
+
+    function loadSpeedtestServers() {
+        fetch('/gateway/api/speedtest/servers')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const sel = document.getElementById('st-server');
+                    data.data.forEach(s => {
+                        if (s.available) {
+                            const opt = document.createElement('option');
+                            opt.value = s.host;
+                            opt.textContent = s.name + ' (' + s.latency + 'ms)';
+                            sel.appendChild(opt);
+                        }
+                    });
+                }
+            })
+            .catch(() => {});
+    }
+
+    function startSpeedTest() {
+        const target = document.getElementById('st-server').value;
+        document.getElementById('st-start-btn').style.display = 'none';
+        document.getElementById('st-cancel-btn').style.display = 'inline-block';
+        document.getElementById('st-progress').style.display = 'block';
+        document.getElementById('st-error').style.display = 'none';
+        document.getElementById('st-progress-bar').style.width = '0%';
+        document.getElementById('st-progress-text').textContent = '正在启动测速...';
+
+        fetch('/gateway/api/speedtest/start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({target: target})
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'error') {
+                document.getElementById('st-error').textContent = data.message;
+                document.getElementById('st-error').style.display = 'block';
+                resetSpeedtestUI();
+                return;
+            }
+            // 开始轮询结果
+            stPollTimer = setInterval(pollSpeedtestResult, 2000);
+        })
+        .catch(err => {
+            document.getElementById('st-error').textContent = '启动失败: ' + err;
+            document.getElementById('st-error').style.display = 'block';
+            resetSpeedtestUI();
+        });
+    }
+
+    function pollSpeedtestResult() {
+        fetch('/gateway/api/speedtest/result')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status !== 'ok') return;
+                const d = data.data;
+
+                // 更新进度
+                if (d.is_running) {
+                    document.getElementById('st-progress-bar').style.width = '50%';
+                    document.getElementById('st-progress-text').textContent = '测速进行中...';
+                    return;
+                }
+
+                // 测速完成
+                clearInterval(stPollTimer);
+                stPollTimer = null;
+
+                document.getElementById('st-download').textContent = d.download_mbps ? d.download_mbps + ' Mbps' : '-';
+                document.getElementById('st-upload').textContent = d.upload_mbps ? d.upload_mbps + ' Mbps' : '-';
+                document.getElementById('st-latency').textContent = d.latency_ms ? d.latency_ms + ' ms' : '-';
+                document.getElementById('st-jitter').textContent = d.jitter_ms ? d.jitter_ms + ' ms' : '-';
+                document.getElementById('st-loss').textContent = d.packet_loss !== undefined ? d.packet_loss + '%' : '-';
+                document.getElementById('st-target').textContent = d.target || '-';
+
+                document.getElementById('st-progress-bar').style.width = '100%';
+                document.getElementById('st-progress-text').textContent = '测速完成';
+
+                if (d.error) {
+                    document.getElementById('st-error').textContent = '备注: ' + d.error;
+                    document.getElementById('st-error').style.display = 'block';
+                }
+
+                setTimeout(() => {
+                    document.getElementById('st-progress').style.display = 'none';
+                }, 2000);
+
+                resetSpeedtestUI();
+            })
+            .catch(() => {});
+    }
+
+    function cancelSpeedTest() {
+        fetch('/gateway/api/speedtest/cancel', {method: 'POST'});
+        if (stPollTimer) { clearInterval(stPollTimer); stPollTimer = null; }
+        document.getElementById('st-progress-text').textContent = '已取消';
+        resetSpeedtestUI();
+    }
+
+    function resetSpeedtestUI() {
+        document.getElementById('st-start-btn').style.display = 'inline-block';
+        document.getElementById('st-cancel-btn').style.display = 'none';
+    }
+
+    // ========== WAN管理 ==========
+
+    function onWanModeChange() {
+        const mode = document.getElementById('wan-connect-mode').value;
+        document.getElementById('wan-dhcp-config').style.display = mode === 'dhcp' ? 'block' : 'none';
+        document.getElementById('wan-pppoe-config').style.display = mode === 'pppoe' ? 'block' : 'none';
+        document.getElementById('wan-static-config').style.display = mode === 'static' ? 'block' : 'none';
+    }
+
+    function loadWanStatus() {
+        fetch('/gateway/api/wan/status')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const d = data.data;
+                    const modeMap = {dhcp: 'DHCP', pppoe: 'PPPoE', static: '静态IP'};
+
+                    document.getElementById('wan-conn-status').textContent = d.is_connected ? '已连接' : '未连接';
+                    document.getElementById('wan-conn-card').className = 'status-card ' + (d.is_connected ? 'active' : 'inactive');
+                    document.getElementById('wan-mode').textContent = modeMap[d.mode] || d.mode;
+                    document.getElementById('wan-ip').textContent = d.current_ip || '-';
+                    document.getElementById('wan-gw').textContent = d.gateway_ip || '-';
+                    document.getElementById('wan-dns').textContent = (d.dns_servers || []).join(', ') || '-';
+
+                    if (d.connect_time) {
+                        const ct = new Date(d.connect_time);
+                        const diff = Math.floor((Date.now() - ct.getTime()) / 1000);
+                        const h = Math.floor(diff / 3600);
+                        const m = Math.floor((diff % 3600) / 60);
+                        document.getElementById('wan-uptime').textContent = h > 0 ? `${h}时${m}分` : `${m}分钟`;
+                    } else {
+                        document.getElementById('wan-uptime').textContent = '-';
+                    }
+
+                    // 回填配置表单
+                    document.getElementById('wan-connect-mode').value = d.mode;
+                    document.getElementById('wan-physical-iface').value = d.interface || 'eth0';
+                    if (d.pppoe_username) document.getElementById('pppoe-username').value = d.pppoe_username;
+                    if (d.pppoe_mtu) document.getElementById('pppoe-mtu').value = d.pppoe_mtu;
+                    if (d.static_ip) document.getElementById('static-ip').value = d.static_ip;
+                    if (d.static_netmask) document.getElementById('static-netmask').value = d.static_netmask;
+                    if (d.static_gateway) document.getElementById('static-gateway').value = d.static_gateway;
+                    onWanModeChange();
+                }
+            });
+    }
+
+    function saveWanConfig() {
+        const mode = document.getElementById('wan-connect-mode').value;
+        const data = {
+            mode: mode,
+            interface: document.getElementById('wan-physical-iface').value || 'eth0'
+        };
+
+        if (mode === 'pppoe') {
+            data.pppoe_username = document.getElementById('pppoe-username').value;
+            data.pppoe_password = document.getElementById('pppoe-password').value;
+            data.pppoe_mtu = parseInt(document.getElementById('pppoe-mtu').value) || 1492;
+        } else if (mode === 'static') {
+            data.static_ip = document.getElementById('static-ip').value;
+            data.static_netmask = document.getElementById('static-netmask').value;
+            data.static_gateway = document.getElementById('static-gateway').value;
+            data.static_dns = document.getElementById('static-dns').value.split(',').map(s => s.trim()).filter(s => s);
+        }
+
+        fetch('/gateway/api/wan/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(result => {
+            if (result.status === 'ok') {
+                alert('WAN配置已保存');
+            } else {
+                alert('错误: ' + result.message);
+            }
+        });
+    }
+
+    function connectWan() {
+        if (!confirm('确定要连接WAN吗？当前连接将被断开。')) return;
+
+        fetch('/gateway/api/wan/connect', {method: 'POST'})
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(result => {
+                alert(result.message || (result.status === 'ok' ? '连接成功' : '连接失败'));
+                loadWanStatus();
+            });
+    }
+
+    function disconnectWan() {
+        if (!confirm('确定要断开WAN连接吗？')) return;
+
+        fetch('/gateway/api/wan/disconnect', {method: 'POST'})
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(result => {
+                alert(result.message || '已断开');
+                loadWanStatus();
+            });
+    }
+</script>
+{% endblock %}

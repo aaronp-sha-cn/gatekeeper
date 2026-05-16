@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+
+{% block title %}应用识别与管控{% endblock %}
+
+{% block content %}
+<!-- Tab Navigation -->
+<div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('apps', event)"><i class="fas fa-th-list"></i> 应用列表</button>
+    <button class="tab-btn" onclick="switchTab('traffic', event)"><i class="fas fa-network-wired"></i> 流量检测</button>
+    <button class="tab-btn" onclick="switchTab('block', event)"><i class="fas fa-ban"></i> 阻断策略</button>
+    <button class="tab-btn" onclick="switchTab('stats', event)"><i class="fas fa-chart-bar"></i> 统计分析</button>
+</div>
+
+<!-- Tab: App List -->
+<div class="tab-panel" id="tab-apps">
+    <div class="panel-header">
+        <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input type="text" id="search-input" placeholder="搜索应用..." onkeydown="if(event.key==='Enter')searchApps()">
+            <button class="btn btn-primary btn-sm" onclick="searchApps()">搜索</button>
+        </div>
+        <div class="filter-box">
+            <select id="category-filter" onchange="loadApps()">
+                <option value="">全部分类</option>
+            </select>
+        </div>
+    </div>
+    <table class="data-table">
+        <thead>
+            <tr><th>ID</th><th>应用名称</th><th>分类</th><th>风险</th><th>协议</th><th>状态</th><th>操作</th></tr>
+        </thead>
+        <tbody id="apps-tbody">
+            <tr><td colspan="7" style="text-align:center;color:var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Tab: Traffic Detection -->
+<div class="tab-panel" id="tab-traffic" style="display:none;">
+    <div class="panel-header">
+        <button class="btn btn-primary" onclick="scanConnections()"><i class="fas fa-radar"></i> 扫描活跃连接</button>
+    </div>
+    <table class="data-table">
+        <thead>
+            <tr><th>源IP</th><th>源端口</th><th>目的IP</th><th>目的端口</th><th>协议</th><th>识别应用</th><th>风险</th></tr>
+        </thead>
+        <tbody id="traffic-tbody">
+            <tr><td colspan="7" style="text-align:center;color:var(--text-muted);">点击扫描按钮开始检测</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Tab: Block Policy -->
+<div class="tab-panel" id="tab-block" style="display:none;">
+    <table class="data-table">
+        <thead>
+            <tr><th>ID</th><th>应用名称</th><th>分类</th><th>风险</th><th>阻断时间</th><th>操作</th></tr>
+        </thead>
+        <tbody id="blocked-tbody">
+            <tr><td colspan="6" style="text-align:center;color:var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Tab: Statistics -->
+<div class="tab-panel" id="tab-stats" style="display:none;">
+    <div class="stats-grid">
+        <div class="stat-card"><h3>已识别应用</h3><div class="value" id="stat-total">-</div></div>
+        <div class="stat-card blocked"><h3>已阻断</h3><div class="value" id="stat-blocked">-</div></div>
+        <div class="stat-card enabled"><h3>活跃连接</h3><div class="value" id="stat-active">-</div></div>
+        <div class="stat-card rate"><h3>分类数</h3><div class="value" id="stat-categories">-</div></div>
+    </div>
+    <div class="section">
+        <h3><i class="fas fa-chart-pie"></i> 分类分布</h3>
+        <div id="category-chart" class="bar-chart"></div>
+    </div>
+    <div class="section">
+        <h3><i class="fas fa-trophy"></i> Top 10 应用 (按流量)</h3>
+        <div id="top-apps-chart" class="bar-chart"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.tab-bar { display:flex; gap:4px; margin-bottom:20px; border-bottom:1px solid var(--border); padding-bottom:0; }
+.tab-btn { padding:10px 20px; background:transparent; border:1px solid transparent; border-bottom:none;
+    color:var(--text-muted); cursor:pointer; font-size:14px; border-radius:6px 6px 0 0; transition:all .2s; }
+.tab-btn:hover { color:var(--text); background:rgba(37,99,235,.05); }
+.tab-btn.active { color:var(--primary); background:var(--bg-card); border-color:var(--border); font-weight:600; }
+.tab-panel { background:var(--bg-card); border:1px solid var(--border); border-radius:0 6px 6px 6px; padding:20px; }
+.panel-header { display:flex; gap:15px; margin-bottom:15px; flex-wrap:wrap; align-items:center; }
+.search-box { display:flex; gap:8px; align-items:center; flex:1; min-width:250px; }
+.search-box input { flex:1; padding:8px 10px; background:var(--bg); border:1px solid var(--border);
+    border-radius:4px; color:var(--text); font-size:14px; }
+.search-box input:focus { outline:none; border-color:var(--primary); }
+.search-box i { color:var(--text-muted); }
+.filter-box select { padding:8px 10px; background:var(--bg); border:1px solid var(--border);
+    border-radius:4px; color:var(--text); font-size:14px; }
+.data-table { width:100%; border-collapse:collapse; }
+.data-table th,.data-table td { padding:10px 12px; text-align:left; border-bottom:1px solid var(--border); font-size:14px; }
+.data-table th { color:var(--text-muted); font-weight:600; font-size:13px; }
+.data-table tr:hover { background:rgba(37,99,235,.05); }
+.stat-card.enabled .value { color:#86efac; }
+.stat-card.rate .value { color:#fcd34d; }
+.section { margin-bottom:25px; }
+.section h3 { color:var(--primary); margin-bottom:15px; font-size:16px; }
+.bar-chart { display:flex; flex-direction:column; gap:8px; }
+.bar-row { display:flex; align-items:center; gap:10px; }
+.bar-label { width:120px; text-align:right; font-size:13px; color:var(--text-muted); overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; }
+.bar-track { flex:1; height:24px; background:rgba(37,99,235,.1); border-radius:4px; overflow:hidden; }
+.bar-fill { height:100%; background:linear-gradient(90deg,var(--primary),#60a5fa); border-radius:4px;
+    transition:width .5s; min-width:2px; }
+.bar-value { width:60px; font-size:13px; color:var(--text); font-weight:600; }
+.btn { padding:6px 14px; border:none; border-radius:4px; cursor:pointer; font-size:13px; font-weight:500; transition:opacity .2s; }
+.btn:hover { opacity:.85; }
+.btn-primary { background:var(--primary); color:#fff; }
+.btn-danger { background:#ef4444; color:#fff; }
+.btn-success { background:#22c55e; color:#fff; }
+.btn-sm { padding:4px 10px; font-size:12px; }
+.tag { display:inline-block; padding:2px 8px; border-radius:3px; font-size:12px; font-weight:600; }
+.tag-low { background:rgba(134,239,172,.2); color:#86efac; }
+.tag-medium { background:rgba(252,211,77,.2); color:#fcd34d; }
+.tag-high { background:rgba(252,165,165,.2); color:#fca5a5; }
+.tag-blocked { background:rgba(252,165,165,.2); color:#fca5a5; }
+.tag-active { background:rgba(134,239,172,.2); color:#86efac; }
+.action-btns { display:flex; gap:6px; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function switchTab(name, event) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).style.display = 'block';
+    if (event && event.currentTarget) event.currentTarget.classList.add('active');
+    if (name === 'block') loadBlocked();
+    if (name === 'stats') loadStats();
+}
+
+function loadCategories() {
+    fetch('/app-control/api/categories').then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => {
+        if (data.status === 'ok') {
+            const sel = document.getElementById('category-filter');
+            data.data.categories.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id; opt.textContent = c.name;
+                sel.appendChild(opt);
+            });
+        }
+    }).catch(()=>{});
+}
+
+function loadApps() {
+    const cat = document.getElementById('category-filter').value;
+    const url = cat ? '/app-control/api/apps?category=' + cat : '/app-control/api/apps';
+    fetch(url).then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => {
+        const tbody = document.getElementById('apps-tbody');
+        if (data.status === 'ok' && data.data.apps.length > 0) {
+            tbody.innerHTML = data.data.apps.map(a => `<tr>
+                <td>${a.id}</td><td>${a.name}</td><td>${a.category_name||a.category}</td>
+                <td><span class="tag tag-${a.risk||'low'}">${a.risk||'low'}</span></td>
+                <td>${(a.protocols||[]).join(', ')}</td>
+                <td><span class="tag tag-active">正常</span></td>
+                <td><div class="action-btns">
+                    <button class="btn btn-sm btn-danger" onclick="blockApp('${a.id}')">阻断</button>
+                </div></td></tr>`).join('');
+        } else {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">暂无应用数据</td></tr>';
+        }
+    }).catch(()=>{});
+}
+
+function searchApps() {
+    const kw = document.getElementById('search-input').value.trim();
+    if (!kw) { loadApps(); return; }
+    fetch('/app-control/api/search', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({keyword:kw}) })
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => {
+        const tbody = document.getElementById('apps-tbody');
+        if (data.status === 'ok' && data.data.results.length > 0) {
+            tbody.innerHTML = data.data.results.map(a => `<tr>
+                <td>${a.id}</td><td>${a.name}</td><td>${a.category_name||a.category}</td>
+                <td><span class="tag tag-${a.risk||'low'}">${a.risk||'low'}</span></td>
+                <td>${(a.protocols||[]).join(', ')}</td>
+                <td><span class="tag tag-active">正常</span></td>
+                <td><div class="action-btns">
+                    <button class="btn btn-sm btn-danger" onclick="blockApp('${a.id}')">阻断</button>
+                </div></td></tr>`).join('');
+        } else {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">未找到匹配应用</td></tr>';
+        }
+    }).catch(()=>{});
+}
+
+function blockApp(id) {
+    if (!confirm('确定要阻断此应用吗？')) return;
+    fetch('/app-control/api/block', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({app_id:id}) })
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => { if(data.status==='ok'){alert('已阻断');loadApps();}else{alert(data.message);} }).catch(()=>{});
+}
+
+function unblockApp(id) {
+    fetch('/app-control/api/unblock', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({app_id:id}) })
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => { if(data.status==='ok'){loadBlocked();}else{alert(data.message);} }).catch(()=>{});
+}
+
+function loadBlocked() {
+    fetch('/app-control/api/blocked').then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => {
+        const tbody = document.getElementById('blocked-tbody');
+        if (data.status === 'ok' && data.data.blocked_apps.length > 0) {
+            tbody.innerHTML = data.data.blocked_apps.map(a => `<tr>
+                <td>${a.id}</td><td>${a.name}</td><td>${a.category_name||a.category}</td>
+                <td><span class="tag tag-${a.risk||'low'}">${a.risk||'low'}</span></td>
+                <td>${a.blocked_at||'-'}</td>
+                <td><button class="btn btn-sm btn-success" onclick="unblockApp('${a.id}')">解除</button></td></tr>`).join('');
+        } else {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">暂无阻断策略</td></tr>';
+        }
+    }).catch(()=>{});
+}
+
+function scanConnections() {
+    fetch('/app-control/api/active-connections').then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => {
+        const tbody = document.getElementById('traffic-tbody');
+        if (data.status === 'ok' && data.data.connections.length > 0) {
+            tbody.innerHTML = data.data.connections.map(c => `<tr>
+                <td>${c.src_ip}</td><td>${c.src_port}</td><td>${c.dst_ip}</td><td>${c.dst_port}</td>
+                <td>${c.protocol}</td><td>${c.app_name||'未知'}</td>
+                <td><span class="tag tag-${c.risk||'low'}">${c.risk||'low'}</span></td></tr>`).join('');
+        } else {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">未检测到活跃连接</td></tr>';
+        }
+    }).catch(()=>{});
+}
+
+function loadStats() {
+    fetch('/app-control/api/stats').then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(data => {
+        if (data.status !== 'ok') return;
+        const d = data.data;
+        document.getElementById('stat-total').textContent = d.total_apps || 0;
+        document.getElementById('stat-blocked').textContent = d.blocked_count || 0;
+        document.getElementById('stat-active').textContent = d.active_connections || 0;
+        document.getElementById('stat-categories').textContent = d.total_categories || 0;
+        if (d.category_distribution) renderBarChart('category-chart', d.category_distribution);
+        if (d.top_apps) renderBarChart('top-apps-chart', d.top_apps);
+    }).catch(()=>{});
+}
+
+function renderBarChart(containerId, items) {
+    const container = document.getElementById(containerId);
+    if (!items || items.length === 0) { container.innerHTML = '<p style="color:var(--text-muted)">暂无数据</p>'; return; }
+    const max = Math.max(...items.map(i => i.count || i.value || 0));
+    container.innerHTML = items.slice(0, 10).map(item => {
+        const name = item.name || item.category || item.label || '';
+        const val = item.count || item.value || 0;
+        const pct = max > 0 ? (val / max * 100) : 0;
+        return `<div class="bar-row"><span class="bar-label" title="${name}">${name}</span>
+            <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+            <span class="bar-value">${val}</span></div>`;
+    }).join('');
+}
+
+loadCategories(); loadApps();
+</script>
+{% endblock %}

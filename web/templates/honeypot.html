@@ -1,0 +1,528 @@
+{% extends "base.html" %}
+
+{% block title %}蜜罐管理{% endblock %}
+
+{% block content %}
+<!-- 统计概览 -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>运行中服务</h3>
+        <div class="value" id="running-services">-</div>
+    </div>
+    <div class="stat-card">
+        <h3>总捕获数</h3>
+        <div class="value" id="total-captures">-</div>
+    </div>
+    <div class="stat-card">
+        <h3>今日捕获</h3>
+        <div class="value" id="today-captures">-</div>
+    </div>
+    <div class="stat-card critical">
+        <h3>高危事件</h3>
+        <div class="value" id="high-threats">-</div>
+    </div>
+</div>
+
+<!-- 创建服务 -->
+<div class="section">
+    <h2>创建蜜罐服务</h2>
+    <div class="create-form">
+        <div class="form-group">
+            <label>服务名称</label>
+            <input type="text" id="svc-name" placeholder="如: ssh-honeypot">
+        </div>
+        <div class="form-group">
+            <label>服务类型</label>
+            <select id="svc-type">
+                <option value="ssh">SSH</option>
+                <option value="http">HTTP</option>
+                <option value="ftp">FTP</option>
+                <option value="telnet">Telnet</option>
+                <option value="smtp">SMTP</option>
+                <option value="mysql">MySQL</option>
+                <option value="dns">DNS</option>
+                <option value="smb">SMB</option>
+                <option value="mongodb">MongoDB</option>
+                <option value="redis">Redis</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>监听端口</label>
+            <input type="number" id="svc-port" placeholder="如: 2222" min="1" max="65535">
+        </div>
+        <div class="form-group">
+            <label>协议</label>
+            <select id="svc-protocol">
+                <option value="tcp">TCP</option>
+                <option value="udp">UDP</option>
+            </select>
+        </div>
+        <div class="form-group" style="display: flex; align-items: flex-end;">
+            <button class="btn btn-primary" onclick="createService()">创建服务</button>
+        </div>
+    </div>
+</div>
+
+<!-- 服务管理 -->
+<div class="section">
+    <h2>蜜罐服务列表</h2>
+    <div class="services-grid" id="services-list">
+        <p style="color: var(--text-muted);">加载中...</p>
+    </div>
+</div>
+
+<!-- 威胁级别分布 -->
+<div class="section">
+    <h2>威胁级别分布</h2>
+    <div class="threat-chart" id="threat-chart">
+        <div class="chart-bar-container">
+            <div class="chart-bar-label">Low</div>
+            <div class="chart-bar-track"><div class="chart-bar-fill bar-low" id="bar-low" style="width: 0%;"></div></div>
+            <div class="chart-bar-value" id="val-low">0</div>
+        </div>
+        <div class="chart-bar-container">
+            <div class="chart-bar-label">Medium</div>
+            <div class="chart-bar-track"><div class="chart-bar-fill bar-medium" id="bar-medium" style="width: 0%;"></div></div>
+            <div class="chart-bar-value" id="val-medium">0</div>
+        </div>
+        <div class="chart-bar-container">
+            <div class="chart-bar-label">High</div>
+            <div class="chart-bar-track"><div class="chart-bar-fill bar-high" id="bar-high" style="width: 0%;"></div></div>
+            <div class="chart-bar-value" id="val-high">0</div>
+        </div>
+        <div class="chart-bar-container">
+            <div class="chart-bar-label">Critical</div>
+            <div class="chart-bar-track"><div class="chart-bar-fill bar-critical" id="bar-critical" style="width: 0%;"></div></div>
+            <div class="chart-bar-value" id="val-critical">0</div>
+        </div>
+    </div>
+</div>
+
+<!-- 捕获记录 -->
+<div class="section">
+    <div class="section-header">
+        <h2>捕获记录</h2>
+        <div class="section-actions">
+            <select id="filter-service" onchange="loadCaptures()">
+                <option value="">所有服务</option>
+            </select>
+            <select id="filter-threat" onchange="loadCaptures()">
+                <option value="">所有级别</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
+            </select>
+            <button class="btn btn-secondary" onclick="exportCaptures()">导出CSV</button>
+        </div>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>时间</th>
+                <th>服务</th>
+                <th>客户端IP</th>
+                <th>端口</th>
+                <th>协议</th>
+                <th>威胁级别</th>
+                <th>请求数据</th>
+                <th>凭证</th>
+                <th>标签</th>
+            </tr>
+        </thead>
+        <tbody id="captures-table">
+            <tr><td colspan="9" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+    <div class="pagination" id="pagination"></div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 统计卡片 */
+
+    /* 区块 */
+    .section h2 { color: var(--primary); margin-bottom: 15px; font-size: 18px; }
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    .section-header h2 { margin-bottom: 0; }
+    .section-actions { display: flex; gap: 10px; align-items: center; }
+
+    /* 创建表单 */
+    .create-form {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 15px;
+    }
+
+    /* 服务卡片 */
+    .services-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 15px;
+    }
+    .service-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        transition: border-color 0.2s;
+    }
+    .service-card:hover { border-color: var(--primary); }
+    .service-card.running { border-left: 4px solid var(--success); }
+    .service-card.stopped { border-left: 4px solid var(--text-muted); }
+    .service-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    .service-card-header h3 { font-size: 16px; color: var(--text); }
+    .service-status {
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .service-status.running { background: rgba(22, 163, 74, 0.2); color: #86efac; }
+    .service-status.stopped { background: rgba(148, 163, 184, 0.2); color: #94a3b8; }
+    .service-info { color: var(--text-muted); font-size: 13px; margin-bottom: 12px; }
+    .service-info span { margin-right: 15px; }
+    .service-actions { display: flex; gap: 8px; }
+
+    /* 数据表格 */
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; }
+    th { color: var(--text-muted); font-weight: 600; white-space: nowrap; }
+    tr:hover { background: rgba(37, 99, 235, 0.05); }
+    .data-preview { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; font-size: 12px; }
+
+    /* 威胁级别标签 */
+    .threat-low { color: #86efac; }
+    .threat-medium { color: #fcd34d; }
+    .threat-high { color: #fb923c; }
+    .threat-critical { color: #fca5a5; font-weight: bold; }
+
+    /* 威胁分布图 */
+    .threat-chart { max-width: 600px; }
+    .chart-bar-container {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 10px;
+    }
+    .chart-bar-label {
+        width: 70px;
+        text-align: right;
+        color: var(--text-muted);
+        font-size: 13px;
+    }
+    .chart-bar-track {
+        flex: 1;
+        height: 24px;
+        background: rgba(51, 65, 85, 0.5);
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    .chart-bar-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.5s ease;
+        min-width: 2px;
+    }
+    .bar-low { background: #22c55e; }
+    .bar-medium { background: #eab308; }
+    .bar-high { background: #f97316; }
+    .bar-critical { background: #ef4444; }
+    .chart-bar-value {
+        width: 40px;
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    /* 分页 */
+    .pagination {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 15px;
+    }
+    .pagination button {
+        padding: 6px 14px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        color: var(--text);
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .pagination button:hover { border-color: var(--primary); }
+    .pagination button.active { background: var(--primary); border-color: var(--primary); }
+    .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* 按钮 */
+    .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-danger:hover { opacity: 0.9; }
+    .btn-success { background: var(--success); color: white; }
+    .btn-success:hover { opacity: 0.9; }
+    .btn-secondary { background: var(--border); color: var(--text); }
+    .btn-secondary:hover { opacity: 0.8; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+    /* 表单 */
+    .form-group { display: flex; flex-direction: column; gap: 4px; }
+    .form-group label { color: var(--text-muted); font-size: 13px; }
+    .form-group input, .form-group select {
+        padding: 8px 12px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-size: 13px;
+    }
+    .form-group input:focus, .form-group select:focus {
+        outline: none;
+        border-color: var(--primary);
+    }
+    .section-actions select {
+        padding: 6px 10px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-size: 13px;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentPage = 1;
+    const perPage = 20;
+
+    // 加载统计数据
+    function loadStats() {
+        fetch('/honeypot/api/stats')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const d = data.data;
+                    document.getElementById('running-services').textContent = d.running_services;
+                    document.getElementById('total-captures').textContent = d.total_captures;
+                    document.getElementById('today-captures').textContent = d.today_captures;
+                    const highCount = (d.threat_distribution.high || 0) + (d.threat_distribution.critical || 0);
+                    document.getElementById('high-threats').textContent = highCount;
+
+                    // 更新威胁分布图
+                    const total = d.total_captures || 1;
+                    const levels = ['low', 'medium', 'high', 'critical'];
+                    levels.forEach(level => {
+                        const count = d.threat_distribution[level] || 0;
+                        const pct = Math.round((count / total) * 100);
+                        document.getElementById('bar-' + level).style.width = pct + '%';
+                        document.getElementById('val-' + level).textContent = count;
+                    });
+
+                    // 更新服务过滤下拉
+                    const filterSel = document.getElementById('filter-service');
+                    const currentVal = filterSel.value;
+                    filterSel.innerHTML = '<option value="">所有服务</option>';
+                    (d.services || []).forEach(s => {
+                        filterSel.innerHTML += '<option value="' + s.name + '">' + s.name + ' (' + s.service_type + ')</option>';
+                    });
+                    filterSel.value = currentVal;
+                }
+            });
+    }
+
+    // 加载服务列表
+    function loadServices() {
+        fetch('/honeypot/api/services')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                const container = document.getElementById('services-list');
+                if (data.status === 'ok' && data.data.services.length > 0) {
+                    container.innerHTML = data.data.services.map(s => {
+                        const statusClass = s.enabled ? 'running' : 'stopped';
+                        const statusText = s.enabled ? '运行中' : '已停止';
+                        const toggleBtn = s.enabled
+                            ? '<button class="btn btn-danger btn-sm" onclick="toggleService(\'' + s.name + '\')">停止</button>'
+                            : '<button class="btn btn-success btn-sm" onclick="toggleService(\'' + s.name + '\')">启动</button>';
+                        return '<div class="service-card ' + statusClass + '">' +
+                            '<div class="service-card-header">' +
+                                '<h3>' + s.name + '</h3>' +
+                                '<span class="service-status ' + statusClass + '">' + statusText + '</span>' +
+                            '</div>' +
+                            '<div class="service-info">' +
+                                '<span>类型: ' + s.service_type.toUpperCase() + '</span>' +
+                                '<span>端口: ' + s.listen_port + '</span>' +
+                                '<span>协议: ' + s.protocol.toUpperCase() + '</span>' +
+                                '<span>连接数: ' + (s.stats.attacked_count || 0) + '</span>' +
+                            '</div>' +
+                            '<div class="service-actions">' +
+                                toggleBtn +
+                                '<button class="btn btn-danger btn-sm" onclick="deleteService(\'' + s.name + '\')">删除</button>' +
+                            '</div>' +
+                        '</div>';
+                    }).join('');
+                } else {
+                    container.innerHTML = '<p style="color: var(--text-muted);">暂无蜜罐服务，请创建新服务</p>';
+                }
+            });
+    }
+
+    // 加载捕获记录
+    function loadCaptures(page) {
+        if (page !== undefined) currentPage = page;
+        const service = document.getElementById('filter-service').value;
+        const threat = document.getElementById('filter-threat').value;
+
+        let url = '/honeypot/api/captures?page=' + currentPage + '&per_page=' + perPage;
+        if (service) url += '&service=' + encodeURIComponent(service);
+        if (threat) url += '&threat_level=' + encodeURIComponent(threat);
+
+        fetch(url)
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                const tbody = document.getElementById('captures-table');
+                if (data.status === 'ok' && data.data.captures.length > 0) {
+                    tbody.innerHTML = data.data.captures.map(c => {
+                        const time = c.timestamp ? new Date(c.timestamp).toLocaleString() : '-';
+                        const dataPreview = c.captured_data ? c.captured_data.substring(0, 60) : '-';
+                        const creds = c.credentials || '-';
+                        const tags = c.tags || '-';
+                        return '<tr>' +
+                            '<td>' + time + '</td>' +
+                            '<td>' + c.service_name + '</td>' +
+                            '<td>' + c.client_ip + '</td>' +
+                            '<td>' + c.client_port + '</td>' +
+                            '<td>' + (c.protocol || '-').toUpperCase() + '</td>' +
+                            '<td class="threat-' + c.threat_level + '">' + c.threat_level + '</td>' +
+                            '<td class="data-preview" title="' + escapeHtml(dataPreview) + '">' + escapeHtml(dataPreview) + '</td>' +
+                            '<td class="data-preview" title="' + escapeHtml(creds) + '">' + escapeHtml(creds) + '</td>' +
+                            '<td>' + escapeHtml(tags) + '</td>' +
+                        '</tr>';
+                    }).join('');
+
+                    // 分页
+                    renderPagination(data.data.total, data.data.page, data.data.total_pages);
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted);">暂无捕获记录</td></tr>';
+                    document.getElementById('pagination').innerHTML = '';
+                }
+            });
+    }
+
+    // 渲染分页
+    function renderPagination(total, page, totalPages) {
+        const container = document.getElementById('pagination');
+        if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+        let html = '<button ' + (page <= 1 ? 'disabled' : '') + ' onclick="loadCaptures(' + (page - 1) + ')">上一页</button>';
+        for (let i = 1; i <= totalPages && i <= 10; i++) {
+            html += '<button class="' + (i === page ? 'active' : '') + '" onclick="loadCaptures(' + i + ')">' + i + '</button>';
+        }
+        html += '<button ' + (page >= totalPages ? 'disabled' : '') + ' onclick="loadCaptures(' + (page + 1) + ')">下一页</button>';
+        container.innerHTML = html;
+    }
+
+    // HTML转义
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // 创建服务
+    function createService() {
+        const name = document.getElementById('svc-name').value.trim();
+        const type = document.getElementById('svc-type').value;
+        const port = parseInt(document.getElementById('svc-port').value);
+        const protocol = document.getElementById('svc-protocol').value;
+
+        if (!name) { alert('请输入服务名称'); return; }
+        if (!port || port < 1 || port > 65535) { alert('请输入有效端口 (1-65535)'); return; }
+
+        fetch('/honeypot/api/services', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name, type: type, port: port, protocol: protocol})
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                alert('服务创建成功');
+                document.getElementById('svc-name').value = '';
+                document.getElementById('svc-port').value = '';
+                loadServices();
+                loadStats();
+            } else {
+                alert('创建失败: ' + data.message);
+            }
+        });
+    }
+
+    // 删除服务
+    function deleteService(name) {
+        if (!confirm('确定要删除蜜罐服务 "' + name + '" 吗？')) return;
+
+        fetch('/honeypot/api/services/' + encodeURIComponent(name), {
+            method: 'DELETE'
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                loadServices();
+                loadStats();
+            } else {
+                alert('删除失败: ' + data.message);
+            }
+        });
+    }
+
+    // 切换服务状态
+    function toggleService(name) {
+        fetch('/honeypot/api/services/' + encodeURIComponent(name) + '/toggle', {
+            method: 'POST'
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                loadServices();
+                loadStats();
+            } else {
+                alert('操作失败: ' + data.message);
+            }
+        });
+    }
+
+    // 导出CSV
+    function exportCaptures() {
+        const service = document.getElementById('filter-service').value;
+        const threat = document.getElementById('filter-threat').value;
+        let url = '/honeypot/api/export/captures?';
+        if (service) url += 'service=' + encodeURIComponent(service) + '&';
+        if (threat) url += 'threat_level=' + encodeURIComponent(threat);
+        window.open(url, '_blank');
+    }
+
+    // 初始化
+    loadStats();
+    loadServices();
+    loadCaptures();
+
+    // 定时刷新
+    setInterval(loadStats, 15000);
+    setInterval(loadServices, 30000);
+    setInterval(() => loadCaptures(), 15000);
+</script>
+{% endblock %}

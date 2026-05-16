@@ -1,0 +1,486 @@
+{% extends "base.html" %}
+
+{% block title %}DDoS防护{% endblock %}
+
+{% block content %}
+<!-- 统计概览 -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>总检查数据包</h3>
+        <div class="value" id="stat-inspected">-</div>
+    </div>
+    <div class="stat-card blocked">
+        <h3>已拦截</h3>
+        <div class="value" id="stat-blocked">-</div>
+    </div>
+    <div class="stat-card critical">
+        <h3>黑名单数</h3>
+        <div class="value" id="stat-blacklist">-</div>
+    </div>
+    <div class="stat-card">
+        <h3>活跃攻击者</h3>
+        <div class="value" id="stat-attackers">-</div>
+    </div>
+</div>
+
+<!-- 实时流量图表 -->
+<div class="section">
+    <h2>实时流量监控</h2>
+    <div style="position: relative; height: 300px; background: var(--bg-card); border-radius: 8px; padding: 15px; border: 1px solid var(--border);">
+        <canvas id="traffic-chart"></canvas>
+    </div>
+</div>
+
+<!-- 防护规则列表 -->
+<div class="section">
+    <h2>防护规则</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>名称</th>
+                <th>类型</th>
+                <th>阈值</th>
+                <th>动作</th>
+                <th>命中数</th>
+                <th>状态</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="rules-table">
+            <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- 添加规则表单 -->
+<div class="section">
+    <h2>添加规则</h2>
+    <div class="config-form">
+        <div class="form-group">
+            <label>规则名称</label>
+            <input type="text" id="rule-name" placeholder="输入规则名称" style="padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); width: 100%;">
+        </div>
+        <div class="form-group">
+            <label>规则类型</label>
+            <select id="rule-type" style="padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); width: 100%;">
+                <option value="syn_flood">SYN Flood</option>
+                <option value="udp_flood">UDP Flood</option>
+                <option value="icmp_flood">ICMP Flood</option>
+                <option value="connection_limit">连接数限制</option>
+                <option value="rate_limit">速率限制</option>
+                <option value="bandwidth_limit">带宽限制</option>
+                <option value="fragment_flood">碎片包检测</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>阈值</label>
+            <input type="number" id="rule-threshold" value="100" min="1" style="padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); width: 100%;">
+        </div>
+        <div class="form-group">
+            <label>动作</label>
+            <select id="rule-action" style="padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); width: 100%;">
+                <option value="block">阻断</option>
+                <option value="throttle">限速</option>
+                <option value="log">记录</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>持续时间 (秒)</label>
+            <input type="number" id="rule-duration" value="3600" min="60" step="60" style="padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); width: 100%;">
+        </div>
+        <div class="form-group" style="display: flex; align-items: flex-end;">
+            <button class="btn btn-primary" onclick="addRule()">添加规则</button>
+        </div>
+    </div>
+</div>
+
+<!-- 黑名单管理 -->
+<div class="section">
+    <h2>黑名单管理</h2>
+    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+        <input type="text" id="blacklist-ip" placeholder="输入IP地址" style="flex: 1; padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
+        <input type="text" id="blacklist-reason" placeholder="拉黑原因" style="flex: 1; padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
+        <input type="number" id="blacklist-duration" placeholder="时长(秒)" value="3600" style="width: 120px; padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
+        <button class="btn btn-danger" onclick="addBlacklist()">拉黑</button>
+    </div>
+    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+        <input type="text" id="whitelist-ip" placeholder="加入白名单IP" style="flex: 1; padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
+        <button class="btn btn-success" onclick="addWhitelist()">加入白名单</button>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>IP</th>
+                <th>原因</th>
+                <th>添加时间</th>
+                <th>过期时间</th>
+                <th>类型</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="blacklist-table">
+            <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- 攻击者TOP榜 -->
+<div class="section">
+    <h2>攻击者 TOP 榜</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>排名</th>
+                <th>IP</th>
+                <th>攻击类型</th>
+                <th>总包数</th>
+                <th>SYN</th>
+                <th>UDP</th>
+                <th>ICMP</th>
+                <th>碎片包</th>
+                <th>首次发现</th>
+                <th>最后活跃</th>
+                <th>状态</th>
+            </tr>
+        </thead>
+        <tbody id="attackers-table">
+            <tr><td colspan="11" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 统计卡片 */
+    .stat-card .value { color: #60a5fa; }
+
+    /* 区块标题 */
+    .section h2 { color: var(--primary); margin-bottom: 15px; font-size: 18px; }
+
+    /* 数据表格 */
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; }
+    th { color: var(--text-muted); font-weight: 600; }
+    tr:hover { background: rgba(37, 99, 235, 0.05); }
+
+    /* 配置表单 */
+    .config-form {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+    }
+
+    /* 状态标签 */
+    .tag { padding: 2px 8px; border-radius: 3px; font-size: 12px; font-weight: 600; }
+    .tag-block { background: rgba(252,165,165,0.2); color: #fca5a5; }
+    .tag-throttle { background: rgba(253,224,71,0.2); color: #fde047; }
+    .tag-log { background: rgba(134,239,172,0.2); color: #86efac; }
+    .tag-enabled { background: rgba(134,239,172,0.2); color: #86efac; }
+    .tag-disabled { background: rgba(148,163,184,0.2); color: #94a3b8; }
+    .tag-auto { background: rgba(252,165,165,0.2); color: #fca5a5; }
+    .tag-manual { background: rgba(96,165,250,0.2); color: #60a5fa; }
+    .tag-blacklisted { background: rgba(252,165,165,0.2); color: #fca5a5; }
+
+    /* 按钮 */
+    .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-danger { background: #dc2626; color: white; }
+    .btn-success { background: #16a34a; color: white; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .btn:hover { opacity: 0.85; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+    function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// ---- 流量图表 ----
+    const MAX_POINTS = 60;
+    const chartLabels = [];
+    const chartDataSets = {
+        syn: [],
+        udp: [],
+        icmp: [],
+        total: [],
+    };
+    let trafficChart = null;
+
+    function initChart() {
+        const ctx = document.getElementById('traffic-chart').getContext('2d');
+        trafficChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: chartLabels,
+                datasets: [
+                    { label: 'SYN/s', data: chartDataSets.syn, borderColor: '#fca5a5', backgroundColor: 'rgba(252,165,165,0.1)', fill: true, tension: 0.4, pointRadius: 0 },
+                    { label: 'UDP/s', data: chartDataSets.udp, borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,0.1)', fill: true, tension: 0.4, pointRadius: 0 },
+                    { label: 'ICMP/s', data: chartDataSets.icmp, borderColor: '#fcd34d', backgroundColor: 'rgba(253,211,77,0.1)', fill: true, tension: 0.4, pointRadius: 0 },
+                    { label: 'Total/s', data: chartDataSets.total, borderColor: '#86efac', backgroundColor: 'rgba(134,239,172,0.1)', fill: true, tension: 0.4, pointRadius: 0 },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 300 },
+                scales: {
+                    x: { display: true, ticks: { color: '#64748b', maxTicksLimit: 10, font: { size: 10 } }, grid: { color: 'rgba(100,116,139,0.1)' } },
+                    y: { display: true, beginAtZero: true, ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(100,116,139,0.1)' } },
+                },
+                plugins: {
+                    legend: { labels: { color: '#94a3b8', font: { size: 11 } } },
+                },
+            },
+        });
+    }
+
+    function updateChart() {
+        const now = new Date();
+        const label = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0') + ':' + now.getSeconds().toString().padStart(2,'0');
+        chartLabels.push(label);
+        if (chartLabels.length > MAX_POINTS) chartLabels.shift();
+
+        // 模拟数据（实际应从API获取）
+        const syn = Math.floor(Math.random() * 30);
+        const udp = Math.floor(Math.random() * 50);
+        const icmp = Math.floor(Math.random() * 10);
+        chartDataSets.syn.push(syn);
+        chartDataSets.udp.push(udp);
+        chartDataSets.icmp.push(icmp);
+        chartDataSets.total.push(syn + udp + icmp);
+        for (const key in chartDataSets) {
+            if (chartDataSets[key].length > MAX_POINTS) chartDataSets[key].shift();
+        }
+        trafficChart.update();
+    }
+
+    // ---- 统计数据 ----
+    function loadStats() {
+        fetch('/ddos/api/stats')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const d = data.data;
+                    document.getElementById('stat-inspected').textContent = d.total_inspected.toLocaleString();
+                    document.getElementById('stat-blocked').textContent = d.total_blocked.toLocaleString();
+                    document.getElementById('stat-blacklist').textContent = d.blacklist_count;
+                    document.getElementById('stat-attackers').textContent = d.active_trackers;
+                }
+            });
+    }
+
+    // ---- 规则管理 ----
+    function loadRules() {
+        fetch('/ddos/api/rules')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                const tbody = document.getElementById('rules-table');
+                if (data.status === 'ok' && data.data.length > 0) {
+                    tbody.innerHTML = data.data.map(rule => {
+                        const typeLabels = {
+                            syn_flood: 'SYN Flood', udp_flood: 'UDP Flood',
+                            icmp_flood: 'ICMP Flood', connection_limit: '连接数限制',
+                            rate_limit: '速率限制', bandwidth_limit: '带宽限制',
+                            fragment_flood: '碎片包检测',
+                        };
+                        const actionLabels = { block: '阻断', throttle: '限速', log: '记录' };
+                        const actionClass = { block: 'tag-block', throttle: 'tag-throttle', log: 'tag-log' };
+                        const statusClass = rule.enabled ? 'tag-enabled' : 'tag-disabled';
+                        const statusText = rule.enabled ? '启用' : '禁用';
+                        return `<tr>
+                            <td>${rule.name}</td>
+                            <td>${typeLabels[rule.rule_type] || rule.rule_type}</td>
+                            <td>${rule.params.threshold}</td>
+                            <td><span class="tag ${actionClass[rule.params.action] || ''}">${actionLabels[rule.params.action] || rule.params.action}</span></td>
+                            <td>${rule.hit_count}</td>
+                            <td><span class="tag ${statusClass}">${statusText}</span></td>
+                            <td>
+                                <button class="btn btn-sm ${rule.enabled ? 'btn-danger' : 'btn-success'}" onclick="toggleRule(${rule.id}, ${!rule.enabled})">${rule.enabled ? '禁用' : '启用'}</button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteRule(${rule.id})" style="margin-left:4px;">删除</button>
+                            </td>
+                        </tr>`;
+                    }).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">暂无规则</td></tr>';
+                }
+            });
+    }
+
+    function addRule() {
+        const name = document.getElementById('rule-name').value;
+        const rule_type = document.getElementById('rule-type').value;
+        const threshold = parseInt(document.getElementById('rule-threshold').value);
+        const action = document.getElementById('rule-action').value;
+        const duration = parseInt(document.getElementById('rule-duration').value);
+
+        if (!name) { alert('请输入规则名称'); return; }
+
+        fetch('/ddos/api/rules', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name, rule_type, params: { threshold, action, duration } })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            alert(data.status === 'ok' ? '规则已添加' : '添加失败: ' + data.message);
+            if (data.status === 'ok') {
+                document.getElementById('rule-name').value = '';
+                loadRules();
+            }
+        });
+    }
+
+    function deleteRule(id) {
+        if (!confirm('确定要删除该规则吗？')) return;
+        fetch('/ddos/api/rules/' + id, { method: 'DELETE' })
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                alert(data.status === 'ok' ? '规则已删除' : '删除失败: ' + data.message);
+                if (data.status === 'ok') loadRules();
+            });
+    }
+
+    function toggleRule(id, enabled) {
+        fetch('/ddos/api/rules/' + id + '/toggle', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ enabled })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') loadRules();
+        });
+    }
+
+    // ---- 黑名单管理 ----
+    function loadBlacklist() {
+        fetch('/ddos/api/blacklist')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                const tbody = document.getElementById('blacklist-table');
+                if (data.status === 'ok' && data.data.items.length > 0) {
+                    tbody.innerHTML = data.data.items.map(item => {
+                        const typeTag = item.auto
+                            ? '<span class="tag tag-auto">自动</span>'
+                            : '<span class="tag tag-manual">手动</span>';
+                        return `<tr>
+                            <td>${item.ip}</td>
+                            <td>${item.reason}</td>
+                            <td>${item.added_at ? new Date(item.added_at).toLocaleString() : '-'}</td>
+                            <td>${item.expires_at ? new Date(item.expires_at).toLocaleString() : '-'}</td>
+                            <td>${typeTag}</td>
+                            <td><button class="btn btn-sm btn-success" onclick="removeBlacklist('${item.ip}')">移除</button></td>
+                        </tr>`;
+                    }).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">黑名单为空</td></tr>';
+                }
+            });
+    }
+
+    function addBlacklist() {
+        const ip = document.getElementById('blacklist-ip').value;
+        const reason = document.getElementById('blacklist-reason').value || '手动拉黑';
+        const duration = parseInt(document.getElementById('blacklist-duration').value) || 3600;
+        if (!ip) { alert('请输入IP地址'); return; }
+
+        fetch('/ddos/api/blacklist', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ ip, reason, duration })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            alert(data.status === 'ok' ? 'IP已拉黑' : '拉黑失败: ' + data.message);
+            if (data.status === 'ok') {
+                document.getElementById('blacklist-ip').value = '';
+                document.getElementById('blacklist-reason').value = '';
+                loadBlacklist();
+            }
+        });
+    }
+
+    function removeBlacklist(ip) {
+        if (!confirm('确定要从黑名单移除 ' + ip + ' 吗？')) return;
+        fetch('/ddos/api/blacklist/' + ip, { method: 'DELETE' })
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                alert(data.status === 'ok' ? '已移除' : '移除失败: ' + data.message);
+                if (data.status === 'ok') loadBlacklist();
+            });
+    }
+
+    function addWhitelist() {
+        const ip = document.getElementById('whitelist-ip').value;
+        if (!ip) { alert('请输入IP地址'); return; }
+
+        fetch('/ddos/api/whitelist', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ ip })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            alert(data.status === 'ok' ? 'IP已加入白名单' : '操作失败: ' + data.message);
+            if (data.status === 'ok') {
+                document.getElementById('whitelist-ip').value = '';
+                loadBlacklist();
+            }
+        });
+    }
+
+    // ---- 攻击者TOP榜 ----
+    function loadTopAttackers() {
+        fetch('/ddos/api/top_attackers?limit=20')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                const tbody = document.getElementById('attackers-table');
+                if (data.status === 'ok' && data.data.items.length > 0) {
+                    tbody.innerHTML = data.data.items.map((item, idx) => {
+                        const statusTag = item.is_blacklisted
+                            ? '<span class="tag tag-blacklisted">已拉黑</span>'
+                            : '<span class="tag tag-enabled">活跃</span>';
+                        return `<tr>
+                            <td>${idx + 1}</td>
+                            <td>${item.ip}</td>
+                            <td>${item.attack_type}</td>
+                            <td>${item.total_packets.toLocaleString()}</td>
+                            <td>${item.syn_count.toLocaleString()}</td>
+                            <td>${item.udp_count.toLocaleString()}</td>
+                            <td>${item.icmp_count.toLocaleString()}</td>
+                            <td>${item.fragment_count.toLocaleString()}</td>
+                            <td>${item.first_seen ? new Date(item.first_seen).toLocaleString() : '-'}</td>
+                            <td>${item.last_seen ? new Date(item.last_seen).toLocaleString() : '-'}</td>
+                            <td>${statusTag}</td>
+                        </tr>`;
+                    }).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="11" style="text-align: center; color: var(--text-muted);">暂无攻击记录</td></tr>';
+                }
+            });
+    }
+
+    // ---- 初始化 ----
+    initChart();
+    loadStats();
+    loadRules();
+    loadBlacklist();
+    loadTopAttackers();
+
+    // 定时刷新
+    setInterval(loadStats, 5000);
+    setInterval(loadBlacklist, 10000);
+    setInterval(loadTopAttackers, 10000);
+    setInterval(updateChart, 2000);
+</script>
+{% endblock %}

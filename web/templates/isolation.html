@@ -1,0 +1,915 @@
+{% extends "base.html" %}
+
+{% block title %}网络隔离{% endblock %}
+
+{% block content %}
+<!-- 统计概览 -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>隔离区域</h3>
+        <div class="value" id="stat-zones">-</div>
+    </div>
+    <div class="stat-card">
+        <h3>隔离规则</h3>
+        <div class="value" id="stat-rules">-</div>
+    </div>
+    <div class="stat-card">
+        <h3>已启用规则</h3>
+        <div class="value" id="stat-enabled-rules">-</div>
+    </div>
+    <div class="stat-card critical">
+        <h3>拦截流量</h3>
+        <div class="value" id="stat-blocked">-</div>
+    </div>
+</div>
+
+<!-- 预设模板 -->
+<div class="section">
+    <h2>快速部署 - 预设模板</h2>
+    <div class="preset-grid" id="preset-list">
+        <p style="color: var(--text-muted);">加载中...</p>
+    </div>
+</div>
+
+<!-- 区域管理 -->
+<div class="section">
+    <div class="section-header">
+        <h2>隔离区域管理</h2>
+        <button class="btn btn-primary" onclick="togglePanel('zone-form-panel')">+ 添加区域</button>
+    </div>
+
+    <!-- 添加区域表单 -->
+    <div class="form-panel" id="zone-form-panel" style="display: none;">
+        <h3 id="zone-form-title">添加隔离区域</h3>
+        <input type="hidden" id="zone-edit-id" value="">
+        <div class="create-form">
+            <div class="form-group">
+                <label>区域名称 *</label>
+                <input type="text" id="zone-name" placeholder="如: 办公网">
+            </div>
+            <div class="form-group">
+                <label>描述</label>
+                <input type="text" id="zone-desc" placeholder="区域描述">
+            </div>
+            <div class="form-group">
+                <label>VLAN ID</label>
+                <input type="number" id="zone-vlan" placeholder="如: 100" min="1" max="4094">
+            </div>
+            <div class="form-group">
+                <label>子网 CIDR</label>
+                <input type="text" id="zone-subnet" placeholder="如: 192.168.1.0/24">
+            </div>
+            <div class="form-group">
+                <label>网络接口</label>
+                <input type="text" id="zone-interfaces" placeholder="如: eth0,eth0.100">
+            </div>
+            <div class="form-group">
+                <label>安全级别</label>
+                <select id="zone-security">
+                    <option value="public">Public (公共)</option>
+                    <option value="trusted" selected>Trusted (信任)</option>
+                    <option value="restricted">Restricted (受限)</option>
+                    <option value="guest">Guest (访客)</option>
+                    <option value="dmz">DMZ (非军事区)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>允许通信区域</label>
+                <input type="text" id="zone-allowed" placeholder="区域名称,逗号分隔">
+            </div>
+            <div class="form-group">
+                <label>禁止服务</label>
+                <input type="text" id="zone-blocked" placeholder="ssh,rdp,smb,ftp,逗号分隔">
+            </div>
+            <div class="form-group" style="display: flex; align-items: flex-end;">
+                <button class="btn btn-primary" onclick="saveZone()">保存</button>
+                <button class="btn btn-secondary" onclick="togglePanel('zone-form-panel')" style="margin-left: 8px;">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 区域卡片 -->
+    <div class="zones-grid" id="zones-list">
+        <p style="color: var(--text-muted);">加载中...</p>
+    </div>
+</div>
+
+<!-- 规则管理 -->
+<div class="section">
+    <div class="section-header">
+        <h2>隔离规则管理</h2>
+        <button class="btn btn-primary" onclick="togglePanel('rule-form-panel')">+ 添加规则</button>
+    </div>
+
+    <!-- 添加规则表单 -->
+    <div class="form-panel" id="rule-form-panel" style="display: none;">
+        <h3>添加隔离规则</h3>
+        <div class="create-form">
+            <div class="form-group">
+                <label>规则名称 *</label>
+                <input type="text" id="rule-name" placeholder="如: 办公网-DMZ访问">
+            </div>
+            <div class="form-group">
+                <label>源区域 *</label>
+                <select id="rule-src-zone">
+                    <option value="">选择源区域</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>目标区域 *</label>
+                <select id="rule-dst-zone">
+                    <option value="">选择目标区域</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>允许协议</label>
+                <input type="text" id="rule-protocols" placeholder="tcp,udp,icmp,any">
+            </div>
+            <div class="form-group">
+                <label>允许端口</label>
+                <input type="text" id="rule-ports" placeholder="如: 80,443,22">
+            </div>
+            <div class="form-group">
+                <label>方向</label>
+                <select id="rule-direction">
+                    <option value="bidirectional">双向</option>
+                    <option value="one_way">单向</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>调度</label>
+                <select id="rule-schedule">
+                    <option value="24x7">全天候 (24x7)</option>
+                    <option value="work_hours">工作时间</option>
+                    <option value="custom">自定义</option>
+                </select>
+            </div>
+            <div class="form-group" style="display: flex; align-items: flex-end;">
+                <button class="btn btn-primary" onclick="saveRule()">保存</button>
+                <button class="btn btn-secondary" onclick="togglePanel('rule-form-panel')" style="margin-left: 8px;">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 规则列表 -->
+    <table class="rules-table">
+        <thead>
+            <tr>
+                <th>规则名称</th>
+                <th>源区域</th>
+                <th>目标区域</th>
+                <th>协议</th>
+                <th>端口</th>
+                <th>方向</th>
+                <th>调度</th>
+                <th>命中次数</th>
+                <th>状态</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="rules-table">
+            <tr><td colspan="10" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- 流量检查工具 -->
+<div class="section">
+    <h2>流量检查工具</h2>
+    <div class="check-form">
+        <div class="form-group">
+            <label>源区域</label>
+            <select id="check-src">
+                <option value="">选择源区域</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>目标区域</label>
+            <select id="check-dst">
+                <option value="">选择目标区域</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>协议</label>
+            <select id="check-proto">
+                <option value="tcp">TCP</option>
+                <option value="udp">UDP</option>
+                <option value="icmp">ICMP</option>
+                <option value="any">ANY</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>端口</label>
+            <input type="number" id="check-port" placeholder="如: 80" min="0" max="65535">
+        </div>
+        <div class="form-group" style="display: flex; align-items: flex-end;">
+            <button class="btn btn-primary" onclick="checkTraffic()">检查</button>
+        </div>
+    </div>
+    <div id="check-result" style="margin-top: 12px;"></div>
+</div>
+
+<!-- 区域拓扑 -->
+<div class="section">
+    <div class="section-header">
+        <h2>区域拓扑</h2>
+        <button class="btn btn-secondary" onclick="loadTopology()">刷新</button>
+    </div>
+    <div class="topology-container" id="topology-container">
+        <p style="color: var(--text-muted);">加载中...</p>
+    </div>
+</div>
+
+<!-- 应用规则 -->
+<div class="section">
+    <div class="section-header">
+        <h2>应用隔离规则</h2>
+    </div>
+    <p style="color: var(--text-muted); margin-bottom: 12px;">
+        将当前隔离规则应用到系统iptables防火墙。此操作将生成并执行iptables规则。
+    </p>
+    <button class="btn btn-success" onclick="applyIsolation()">应用到系统</button>
+    <div id="apply-result" style="margin-top: 12px;"></div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 统计卡片 */
+    .stat-card .value { color: #60a5fa; }
+
+    /* 区块 */
+    .section h2 { color: var(--primary); margin-bottom: 15px; font-size: 18px; }
+    .section-header {
+        display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;
+    }
+    .section-header h2 { margin-bottom: 0; }
+
+    /* 预设网格 */
+    .preset-grid {
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px;
+    }
+    .preset-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+        cursor: pointer;
+        transition: all 0.2s;
+        position: relative;
+    }
+    .preset-card:hover { border-color: var(--primary); transform: translateY(-2px); }
+    .preset-card.preset-active {
+        border-color: #22c55e;
+        background: rgba(34,197,94,0.06);
+        box-shadow: 0 0 0 1px rgba(34,197,94,0.3);
+    }
+    .preset-badge {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: #22c55e;
+        color: #fff;
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-weight: 600;
+    }
+    .preset-card h3 { font-size: 16px; color: var(--text); margin-bottom: 8px; }
+    .preset-card p { color: var(--text-muted); font-size: 13px; margin-bottom: 12px; }
+    .preset-card .preset-info { color: var(--text-muted); font-size: 12px; }
+    .preset-card .preset-info span { margin-right: 15px; }
+
+    /* 表单面板 */
+    .form-panel {
+        background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+        padding: 20px; margin-bottom: 20px;
+    }
+    .form-panel h3 { color: var(--primary); margin-bottom: 15px; font-size: 16px; }
+    .create-form {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;
+    }
+
+    /* 区域卡片 */
+    .zones-grid {
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 15px;
+    }
+    .zone-card {
+        background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+        padding: 16px; transition: border-color 0.2s;
+    }
+    .zone-card:hover { border-color: var(--primary); }
+    .zone-card.enabled { border-left: 4px solid var(--success); }
+    .zone-card.disabled { border-left: 4px solid var(--text-muted); }
+    .zone-card-header {
+        display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;
+    }
+    .zone-card-header h3 { font-size: 16px; color: var(--text); }
+    .zone-status {
+        padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600;
+    }
+    .zone-status.enabled { background: rgba(22, 163, 74, 0.2); color: #86efac; }
+    .zone-status.disabled { background: rgba(148, 163, 184, 0.2); color: #94a3b8; }
+    .zone-info { color: var(--text-muted); font-size: 13px; margin-bottom: 8px; }
+    .zone-info span { margin-right: 15px; }
+    .zone-services { color: var(--text-muted); font-size: 12px; margin-bottom: 12px; }
+    .zone-actions { display: flex; gap: 8px; }
+
+    /* 安全级别标签 */
+    .level-public { color: #fca5a5; }
+    .level-trusted { color: #86efac; }
+    .level-restricted { color: #fb923c; }
+    .level-guest { color: #fcd34d; }
+    .level-dmz { color: #93c5fd; }
+
+    /* 规则表格 */
+    .rules-table { width: 100%; border-collapse: collapse; }
+    .rules-table th, .rules-table td {
+        padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px;
+    }
+    .rules-table th { color: var(--text-muted); font-weight: 600; white-space: nowrap; }
+    .rules-table tr:hover { background: rgba(37, 99, 235, 0.05); }
+
+    /* 流量检查 */
+    .check-form {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px;
+    }
+    .check-result-allowed {
+        background: rgba(22, 163, 74, 0.15); border: 1px solid rgba(22, 163, 74, 0.3);
+        border-radius: 6px; padding: 12px 16px; color: #86efac;
+    }
+    .check-result-blocked {
+        background: rgba(220, 38, 38, 0.15); border: 1px solid rgba(220, 38, 38, 0.3);
+        border-radius: 6px; padding: 12px 16px; color: #fca5a5;
+    }
+
+    /* 拓扑可视化 */
+    .topology-container {
+        background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+        padding: 30px; min-height: 300px; position: relative; overflow: hidden;
+    }
+    .topo-nodes {
+        display: flex; justify-content: center; gap: 40px; flex-wrap: wrap;
+        align-items: center; position: relative; z-index: 2;
+    }
+    .topo-node {
+        background: var(--bg-secondary); border: 2px solid var(--border); border-radius: 12px;
+        padding: 16px 24px; text-align: center; min-width: 140px; position: relative;
+        transition: all 0.2s;
+    }
+    .topo-node:hover { transform: scale(1.05); }
+    .topo-node.node-public { border-color: #ef4444; }
+    .topo-node.node-trusted { border-color: #22c55e; }
+    .topo-node.node-restricted { border-color: #f97316; }
+    .topo-node.node-guest { border-color: #eab308; }
+    .topo-node.node-dmz { border-color: #3b82f6; }
+    .topo-node.node-disabled { opacity: 0.4; }
+    .topo-node h4 { font-size: 14px; color: var(--text); margin-bottom: 6px; }
+    .topo-node .topo-meta { font-size: 11px; color: var(--text-muted); }
+    .topo-edges {
+        margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px;
+    }
+    .topo-edge {
+        display: flex; align-items: center; gap: 10px; padding: 6px 0;
+        font-size: 13px; color: var(--text-muted);
+    }
+    .topo-edge .edge-arrow { color: var(--primary); font-weight: bold; }
+    .topo-edge .edge-allow { color: #86efac; }
+    .topo-edge .edge-deny { color: #fca5a5; }
+    .topo-edge .edge-disabled { opacity: 0.4; }
+    .topo-legend {
+        display: flex; gap: 20px; margin-top: 16px; padding-top: 12px;
+        border-top: 1px solid var(--border); font-size: 12px; color: var(--text-muted);
+    }
+    .topo-legend-item { display: flex; align-items: center; gap: 6px; }
+    .topo-legend-dot {
+        width: 10px; height: 10px; border-radius: 50%;
+    }
+
+    /* 按钮 */
+    .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-danger:hover { opacity: 0.9; }
+    .btn-success { background: var(--success); color: white; }
+    .btn-success:hover { opacity: 0.9; }
+    .btn-secondary { background: var(--border); color: var(--text); }
+    .btn-secondary:hover { opacity: 0.8; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+    /* 表单 */
+    .form-group { display: flex; flex-direction: column; gap: 4px; }
+    .form-group label { color: var(--text-muted); font-size: 13px; }
+    .form-group input, .form-group select {
+        padding: 8px 12px; background: var(--bg-card); border: 1px solid var(--border);
+        border-radius: 4px; color: var(--text); font-size: 13px;
+    }
+    .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--primary); }
+
+    /* 应用结果 */
+    .apply-result-box {
+        background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
+        padding: 12px 16px; margin-top: 12px; font-family: monospace; font-size: 12px;
+        color: var(--text-muted); max-height: 300px; overflow-y: auto; white-space: pre-wrap;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // ============================================================
+    // 工具函数
+    // ============================================================
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function togglePanel(id) {
+        const panel = document.getElementById(id);
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function showToast(msg, type) {
+        alert((type === 'error' ? '[错误] ' : '') + msg);
+    }
+
+    // ============================================================
+    // 加载状态
+    // ============================================================
+    function loadStatus() {
+        fetch('/isolation/api/status')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const d = data.data;
+                    document.getElementById('stat-zones').textContent = d.total_zones;
+                    document.getElementById('stat-rules').textContent = d.total_rules;
+                    document.getElementById('stat-enabled-rules').textContent = d.enabled_rules;
+                    document.getElementById('stat-blocked').textContent = d.blocked_traffic_count;
+                }
+            });
+    }
+
+    // ============================================================
+    // 预设模板
+    // ============================================================
+    function loadPresets() {
+        fetch('/isolation/api/presets')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                const container = document.getElementById('preset-list');
+                if (data.status === 'ok') {
+                    const result = data.data;
+                    const presets = result.presets || result;
+                    const activePreset = result.active_preset || '';
+                    container.innerHTML = Object.entries(presets).map(([key, p]) => {
+                        const isActive = p.active || key === activePreset;
+                        return '<div class="preset-card' + (isActive ? ' preset-active' : '') + '" onclick="applyPreset(\'' + key + '\')">' +
+                            (isActive ? '<div class="preset-badge">当前使用</div>' : '') +
+                            '<h3>' + escapeHtml(p.name) + '</h3>' +
+                            '<p>' + escapeHtml(p.description) + '</p>' +
+                            '<div class="preset-info">' +
+                                '<span>' + p.zone_count + ' 个区域</span>' +
+                                '<span>' + p.rule_count + ' 条规则</span>' +
+                            '</div>' +
+                        '</div>';
+                    }).join('');
+                }
+            });
+    }
+
+    function applyPreset(name) {
+        if (!confirm('确定要应用预设模板吗？这将清除现有的所有区域和规则。')) return;
+        fetch('/isolation/api/presets/' + encodeURIComponent(name), { method: 'POST' })
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    showToast(data.message);
+                    refreshAll();
+                } else {
+                    showToast(data.message, 'error');
+                }
+            });
+    }
+
+    // ============================================================
+    // 区域管理
+    // ============================================================
+    function loadZones() {
+        fetch('/isolation/api/zones')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                const container = document.getElementById('zones-list');
+                if (data.status === 'ok' && data.data.zones.length > 0) {
+                    container.innerHTML = data.data.zones.map(z => {
+                        const statusClass = z.enabled ? 'enabled' : 'disabled';
+                        const statusText = z.enabled ? '已启用' : '已禁用';
+                        const toggleBtn = z.enabled
+                            ? '<button class="btn btn-secondary btn-sm" onclick="toggleZone(\'' + z.id + '\', false)">禁用</button>'
+                            : '<button class="btn btn-success btn-sm" onclick="toggleZone(\'' + z.id + '\', true)">启用</button>';
+                        const blocked = z.blocked_services.length > 0
+                            ? '<div class="zone-services">禁止服务: ' + escapeHtml(z.blocked_services.join(', ')) + '</div>' : '';
+                        const allowed = z.allowed_zones.length > 0
+                            ? '<div class="zone-services">允许通信: ' + escapeHtml(z.allowed_zones.join(', ')) + '</div>' : '';
+                        return '<div class="zone-card ' + statusClass + '">' +
+                            '<div class="zone-card-header">' +
+                                '<h3>' + escapeHtml(z.name) + '</h3>' +
+                                '<span class="zone-status ' + statusClass + '">' + statusText + '</span>' +
+                            '</div>' +
+                            '<div class="zone-info">' +
+                                '<span class="level-' + z.security_level + '">' + z.security_level.toUpperCase() + '</span>' +
+                                (z.vlan_id ? '<span>VLAN: ' + z.vlan_id + '</span>' : '') +
+                                (z.subnet_cidr ? '<span>' + escapeHtml(z.subnet_cidr) + '</span>' : '') +
+                            '</div>' +
+                            (z.interfaces.length > 0 ? '<div class="zone-info">接口: ' + escapeHtml(z.interfaces.join(', ')) + '</div>' : '') +
+                            blocked + allowed +
+                            '<div class="zone-actions">' +
+                                toggleBtn +
+                                '<button class="btn btn-secondary btn-sm" onclick="editZone(\'' + z.id + '\')">编辑</button>' +
+                                '<button class="btn btn-danger btn-sm" onclick="deleteZone(\'' + z.id + '\')">删除</button>' +
+                            '</div>' +
+                        '</div>';
+                    }).join('');
+                } else {
+                    container.innerHTML = '<p style="color: var(--text-muted);">暂无隔离区域，请添加或选择预设模板</p>';
+                }
+                updateZoneSelects(data.data.zones);
+            });
+    }
+
+    function saveZone() {
+        const editId = document.getElementById('zone-edit-id').value;
+        const name = document.getElementById('zone-name').value.trim();
+        const desc = document.getElementById('zone-desc').value.trim();
+        const vlan = document.getElementById('zone-vlan').value ? parseInt(document.getElementById('zone-vlan').value) : null;
+        const subnet = document.getElementById('zone-subnet').value.trim();
+        const interfaces = document.getElementById('zone-interfaces').value.trim()
+            ? document.getElementById('zone-interfaces').value.split(',').map(s => s.trim()).filter(Boolean) : [];
+        const security = document.getElementById('zone-security').value;
+        const allowed = document.getElementById('zone-allowed').value.trim()
+            ? document.getElementById('zone-allowed').value.split(',').map(s => s.trim()).filter(Boolean) : [];
+        const blocked = document.getElementById('zone-blocked').value.trim()
+            ? document.getElementById('zone-blocked').value.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+        if (!name) { showToast('请输入区域名称', 'error'); return; }
+
+        const payload = {
+            name, description: desc, vlan_id: vlan, subnet_cidr: subnet,
+            interfaces, security_level: security, allowed_zones: allowed,
+            blocked_services: blocked, enabled: true,
+        };
+
+        let url, method;
+        if (editId) {
+            url = '/isolation/api/zones/' + editId;
+            method = 'PUT';
+        } else {
+            url = '/isolation/api/zones';
+            method = 'POST';
+        }
+
+        fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                showToast(editId ? '区域更新成功' : '区域创建成功');
+                resetZoneForm();
+                togglePanel('zone-form-panel');
+                refreshAll();
+            } else {
+                showToast(data.message, 'error');
+            }
+        });
+    }
+
+    function editZone(zoneId) {
+        fetch('/isolation/api/zones')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                const zone = data.data.zones.find(z => z.id === zoneId);
+                if (!zone) return;
+                document.getElementById('zone-edit-id').value = zone.id;
+                document.getElementById('zone-form-title').textContent = '编辑隔离区域';
+                document.getElementById('zone-name').value = zone.name;
+                document.getElementById('zone-desc').value = zone.description || '';
+                document.getElementById('zone-vlan').value = zone.vlan_id || '';
+                document.getElementById('zone-subnet').value = zone.subnet_cidr || '';
+                document.getElementById('zone-interfaces').value = (zone.interfaces || []).join(',');
+                document.getElementById('zone-security').value = zone.security_level;
+                document.getElementById('zone-allowed').value = (zone.allowed_zones || []).join(',');
+                document.getElementById('zone-blocked').value = (zone.blocked_services || []).join(',');
+                togglePanel('zone-form-panel');
+            });
+    }
+
+    function resetZoneForm() {
+        document.getElementById('zone-edit-id').value = '';
+        document.getElementById('zone-form-title').textContent = '添加隔离区域';
+        document.getElementById('zone-name').value = '';
+        document.getElementById('zone-desc').value = '';
+        document.getElementById('zone-vlan').value = '';
+        document.getElementById('zone-subnet').value = '';
+        document.getElementById('zone-interfaces').value = '';
+        document.getElementById('zone-security').value = 'trusted';
+        document.getElementById('zone-allowed').value = '';
+        document.getElementById('zone-blocked').value = '';
+    }
+
+    function deleteZone(zoneId) {
+        if (!confirm('确定要删除该隔离区域吗？关联的规则也将被删除。')) return;
+        fetch('/isolation/api/zones/' + zoneId, { method: 'DELETE' })
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    showToast('区域删除成功');
+                    refreshAll();
+                } else {
+                    showToast(data.message, 'error');
+                }
+            });
+    }
+
+    function toggleZone(zoneId, enabled) {
+        const payload = { enabled: enabled };
+        fetch('/isolation/api/zones/' + zoneId, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                refreshAll();
+            } else {
+                showToast(data.message, 'error');
+            }
+        });
+    }
+
+    function updateZoneSelects(zones) {
+        const selectors = ['rule-src-zone', 'rule-dst-zone', 'check-src', 'check-dst'];
+        selectors.forEach(selId => {
+            const sel = document.getElementById(selId);
+            if (!sel) return;
+            const currentVal = sel.value;
+            sel.innerHTML = '<option value="">选择区域</option>';
+            zones.forEach(z => {
+                sel.innerHTML += '<option value="' + escapeHtml(z.name) + '">' + escapeHtml(z.name) + '</option>';
+            });
+            sel.value = currentVal;
+        });
+    }
+
+    // ============================================================
+    // 规则管理
+    // ============================================================
+    function loadRules() {
+        fetch('/isolation/api/rules')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                const tbody = document.getElementById('rules-table');
+                if (data.status === 'ok' && data.data.rules.length > 0) {
+                    tbody.innerHTML = data.data.rules.map(r => {
+                        const dirText = r.direction === 'bidirectional' ? '双向' : '单向';
+                        const schedText = r.schedule === '24x7' ? '全天候' : r.schedule === 'work_hours' ? '工作时间' : '自定义';
+                        const statusClass = r.enabled ? 'enabled' : 'disabled';
+                        const statusText = r.enabled ? '启用' : '禁用';
+                        const toggleBtn = r.enabled
+                            ? '<button class="btn btn-secondary btn-sm" onclick="toggleRule(\'' + r.id + '\', false)">禁用</button>'
+                            : '<button class="btn btn-success btn-sm" onclick="toggleRule(\'' + r.id + '\', true)">启用</button>';
+                        return '<tr>' +
+                            '<td>' + escapeHtml(r.name) + '</td>' +
+                            '<td>' + escapeHtml(r.source_zone) + '</td>' +
+                            '<td>' + escapeHtml(r.dest_zone) + '</td>' +
+                            '<td>' + escapeHtml((r.allowed_protocols || []).join(', ')) + '</td>' +
+                            '<td>' + escapeHtml((r.allowed_ports || []).join(', ')) + '</td>' +
+                            '<td>' + dirText + '</td>' +
+                            '<td>' + schedText + '</td>' +
+                            '<td>' + r.hit_count + '</td>' +
+                            '<td><span class="zone-status ' + statusClass + '">' + statusText + '</span></td>' +
+                            '<td>' +
+                                toggleBtn +
+                                ' <button class="btn btn-danger btn-sm" onclick="removeRule(\'' + r.id + '\')">删除</button>' +
+                            '</td>' +
+                        '</tr>';
+                    }).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; color: var(--text-muted);">暂无隔离规则</td></tr>';
+                }
+            });
+    }
+
+    function saveRule() {
+        const name = document.getElementById('rule-name').value.trim();
+        const srcZone = document.getElementById('rule-src-zone').value;
+        const dstZone = document.getElementById('rule-dst-zone').value;
+        const protocols = document.getElementById('rule-protocols').value.trim()
+            ? document.getElementById('rule-protocols').value.split(',').map(s => s.trim()).filter(Boolean) : ['any'];
+        const ports = document.getElementById('rule-ports').value.trim()
+            ? document.getElementById('rule-ports').value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n)) : [];
+        const direction = document.getElementById('rule-direction').value;
+        const schedule = document.getElementById('rule-schedule').value;
+
+        if (!name) { showToast('请输入规则名称', 'error'); return; }
+        if (!srcZone || !dstZone) { showToast('请选择源区域和目标区域', 'error'); return; }
+
+        fetch('/isolation/api/rules', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                name, source_zone: srcZone, dest_zone: dstZone,
+                allowed_protocols: protocols, allowed_ports: ports,
+                direction, schedule,
+            })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                showToast('规则添加成功');
+                document.getElementById('rule-name').value = '';
+                document.getElementById('rule-protocols').value = '';
+                document.getElementById('rule-ports').value = '';
+                togglePanel('rule-form-panel');
+                refreshAll();
+            } else {
+                showToast(data.message, 'error');
+            }
+        });
+    }
+
+    function removeRule(ruleId) {
+        if (!confirm('确定要删除该隔离规则吗？')) return;
+        fetch('/isolation/api/rules/' + ruleId, { method: 'DELETE' })
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    showToast('规则删除成功');
+                    refreshAll();
+                } else {
+                    showToast(data.message, 'error');
+                }
+            });
+    }
+
+    function toggleRule(ruleId, enabled) {
+        fetch('/isolation/api/rules/' + ruleId + '/toggle', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ enabled: enabled })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                refreshAll();
+            } else {
+                showToast(data.message, 'error');
+            }
+        });
+    }
+
+    // ============================================================
+    // 流量检查
+    // ============================================================
+    function checkTraffic() {
+        const srcZone = document.getElementById('check-src').value;
+        const dstZone = document.getElementById('check-dst').value;
+        const proto = document.getElementById('check-proto').value;
+        const port = parseInt(document.getElementById('check-port').value) || 0;
+
+        if (!srcZone || !dstZone) { showToast('请选择源区域和目标区域', 'error'); return; }
+
+        fetch('/isolation/api/check-traffic', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ src_zone: srcZone, dst_zone: dstZone, protocol: proto, port: port })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            const container = document.getElementById('check-result');
+            if (data.status === 'ok') {
+                const result = data.data;
+                const cls = result.allowed ? 'check-result-allowed' : 'check-result-blocked';
+                const icon = result.allowed ? '[ALLOW]' : '[DENY]';
+                container.innerHTML = '<div class="' + cls + '">' +
+                    '<strong>' + icon + '</strong> ' + escapeHtml(result.reason) +
+                    (result.matched_rule ? ' (规则: ' + escapeHtml(result.matched_rule.name) + ')' : '') +
+                '</div>';
+            }
+        });
+    }
+
+    // ============================================================
+    // 拓扑可视化
+    // ============================================================
+    function loadTopology() {
+        fetch('/isolation/api/topology')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                const container = document.getElementById('topology-container');
+                if (data.status === 'ok') {
+                    const topo = data.data;
+                    if (topo.nodes.length === 0) {
+                        container.innerHTML = '<p style="color: var(--text-muted);">暂无区域数据，请先创建隔离区域</p>';
+                        return;
+                    }
+
+                    // 渲染节点
+                    let html = '<div class="topo-nodes">';
+                    topo.nodes.forEach(n => {
+                        const disabledClass = n.enabled ? '' : ' node-disabled';
+                        html += '<div class="topo-node node-' + n.security_level + disabledClass + '">' +
+                            '<h4>' + escapeHtml(n.name) + '</h4>' +
+                            '<div class="topo-meta">' +
+                                n.security_level.toUpperCase() +
+                                (n.vlan_id ? ' | VLAN ' + n.vlan_id : '') +
+                                (n.subnet_cidr ? '<br>' + escapeHtml(n.subnet_cidr) : '') +
+                            '</div>' +
+                        '</div>';
+                    });
+                    html += '</div>';
+
+                    // 渲染连接
+                    if (topo.edges.length > 0) {
+                        html += '<div class="topo-edges">';
+                        topo.edges.forEach(e => {
+                            const disabledClass = e.enabled ? '' : ' edge-disabled';
+                            const allowClass = e.allowed ? 'edge-allow' : 'edge-deny';
+                            const allowText = e.allowed ? '[ALLOW]' : '[DENY]';
+                            const dirIcon = e.direction === 'bidirectional' ? '<->' : '->';
+                            html += '<div class="topo-edge' + disabledClass + '">' +
+                                '<span>' + escapeHtml(e.source) + '</span>' +
+                                '<span class="edge-arrow">' + dirIcon + '</span>' +
+                                '<span>' + escapeHtml(e.target) + '</span>' +
+                                '<span class="' + allowClass + '">' + allowText + '</span>' +
+                                '<span style="color: var(--text-muted); font-size: 12px;">' +
+                                    escapeHtml(e.rule_name) +
+                                    ' (' + escapeHtml((e.protocols || []).join(',')) + ')' +
+                                '</span>' +
+                            '</div>';
+                        });
+                        html += '</div>';
+                    }
+
+                    // 图例
+                    html += '<div class="topo-legend">' +
+                        '<div class="topo-legend-item"><div class="topo-legend-dot" style="background: #22c55e;"></div> Trusted</div>' +
+                        '<div class="topo-legend-item"><div class="topo-legend-dot" style="background: #f97316;"></div> Restricted</div>' +
+                        '<div class="topo-legend-item"><div class="topo-legend-dot" style="background: #eab308;"></div> Guest</div>' +
+                        '<div class="topo-legend-item"><div class="topo-legend-dot" style="background: #3b82f6;"></div> DMZ</div>' +
+                        '<div class="topo-legend-item"><div class="topo-legend-dot" style="background: #ef4444;"></div> Public</div>' +
+                    '</div>';
+
+                    container.innerHTML = html;
+                }
+            });
+    }
+
+    // ============================================================
+    // 应用隔离规则
+    // ============================================================
+    function applyIsolation() {
+        if (!confirm('确定要将隔离规则应用到系统iptables吗？')) return;
+        fetch('/isolation/api/apply', { method: 'POST' })
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                const container = document.getElementById('apply-result');
+                if (data.status === 'ok') {
+                    container.innerHTML = '<div class="check-result-allowed">' +
+                        '<strong>[OK]</strong> ' + escapeHtml(data.message) +
+                    '</div>' +
+                    '<div class="apply-result-box">' +
+                        escapeHtml((data.iptables_rules || []).join('\n')) +
+                    '</div>';
+                } else {
+                    container.innerHTML = '<div class="check-result-blocked">' +
+                        '<strong>[ERROR]</strong> ' + escapeHtml(data.message) +
+                    '</div>';
+                }
+            });
+    }
+
+    // ============================================================
+    // 初始化
+    // ============================================================
+    function refreshAll() {
+        loadStatus();
+        loadZones();
+        loadRules();
+        loadTopology();
+    }
+
+    refreshAll();
+    loadPresets();
+
+    // 定时刷新
+    setInterval(loadStatus, 15000);
+</script>
+{% endblock %}

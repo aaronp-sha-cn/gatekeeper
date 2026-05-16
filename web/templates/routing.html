@@ -1,0 +1,908 @@
+{% extends "base.html" %}
+
+{% block title %}动态路由{% endblock %}
+
+{% block content %}
+<!-- FRR服务状态 -->
+<div class="status-grid">
+    <div class="status-card" id="frr-status-card">
+        <h3>FRR服务</h3>
+        <div class="value" id="frr-status">-</div>
+    </div>
+    <div class="status-card" id="ospf-status-card">
+        <h3>OSPF状态</h3>
+        <div class="value" id="ospf-status">-</div>
+    </div>
+    <div class="status-card" id="bgp-status-card">
+        <h3>BGP状态</h3>
+        <div class="value" id="bgp-status">-</div>
+    </div>
+    <div class="status-card">
+        <h3>OSPF邻居</h3>
+        <div class="value" id="ospf-neighbor-count">0</div>
+    </div>
+    <div class="status-card">
+        <h3>BGP邻居</h3>
+        <div class="value" id="bgp-neighbor-count">0</div>
+    </div>
+    <div class="status-card">
+        <h3>路由条目</h3>
+        <div class="value" id="route-count">0</div>
+    </div>
+</div>
+
+<!-- FRR服务控制 -->
+<div class="section">
+    <h2>FRRouting 服务控制</h2>
+    <div class="frr-info">
+        <span id="frr-version">版本: 检测中...</span>
+    </div>
+    <div class="btn-group">
+        <button class="btn btn-success" onclick="startFRR()">启动服务</button>
+        <button class="btn btn-danger" onclick="stopFRR()">停止服务</button>
+        <button class="btn btn-warning" onclick="restartFRR()">重启服务</button>
+        <button class="btn btn-primary" onclick="refreshStatus()">刷新状态</button>
+    </div>
+    <div class="daemon-status" id="daemon-status">
+        <h4>守护进程状态</h4>
+        <div class="daemon-grid" id="daemon-grid">
+            <!-- 动态填充 -->
+        </div>
+    </div>
+</div>
+
+<!-- OSPF配置 -->
+<div class="section">
+    <h2>OSPF 配置</h2>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Router ID</label>
+            <input type="text" id="ospf-router-id" placeholder="1.1.1.1">
+            <span class="help-text">格式: x.x.x.x</span>
+        </div>
+        <div class="form-group">
+            <label>区域ID</label>
+            <input type="text" id="ospf-area-id" value="0" placeholder="0">
+            <span class="help-text">骨干区域为0</span>
+        </div>
+        <div class="form-group">
+            <label>网络地址</label>
+            <input type="text" id="ospf-network" placeholder="10.0.0.0/8">
+            <span class="help-text">CIDR格式</span>
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>重分发</label>
+            <select id="ospf-redistribute" multiple>
+                <option value="connected">connected</option>
+                <option value="static">static</option>
+                <option value="bgp">bgp</option>
+            </select>
+            <span class="help-text">按住Ctrl多选</span>
+        </div>
+        <div class="form-group">
+            <label>被动接口</label>
+            <input type="text" id="ospf-passive" placeholder="eth0, eth1">
+            <span class="help-text">用逗号分隔</span>
+        </div>
+    </div>
+    <div class="btn-group">
+        <button class="btn btn-success" onclick="configureOSPF()">应用配置</button>
+        <button class="btn btn-danger" onclick="disableOSPF()">禁用OSPF</button>
+        <button class="btn btn-primary" onclick="showOSPFDatabase()">查看数据库</button>
+    </div>
+
+    <!-- OSPF邻居列表 -->
+    <h3 style="margin-top: 20px; color: var(--text-muted);">OSPF邻居</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>邻居ID</th>
+                <th>优先级</th>
+                <th>状态</th>
+                <th>Dead时间</th>
+                <th>地址</th>
+                <th>接口</th>
+            </tr>
+        </thead>
+        <tbody id="ospf-neighbor-list">
+            <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- BGP配置 -->
+<div class="section">
+    <h2>BGP 配置</h2>
+    <div class="form-row">
+        <div class="form-group">
+            <label>本地AS号</label>
+            <input type="number" id="bgp-local-as" placeholder="65001">
+            <span class="help-text">范围: 1-65535</span>
+        </div>
+        <div class="form-group">
+            <label>Router ID</label>
+            <input type="text" id="bgp-router-id" placeholder="1.1.1.1">
+            <span class="help-text">格式: x.x.x.x</span>
+        </div>
+    </div>
+
+    <!-- BGP邻居配置 -->
+    <h3 style="margin-top: 15px; color: var(--text-muted);">BGP邻居</h3>
+    <div class="neighbor-config">
+        <div class="form-row">
+            <div class="form-group">
+                <label>邻居IP</label>
+                <input type="text" id="bgp-neighbor-ip" placeholder="192.168.1.2">
+            </div>
+            <div class="form-group">
+                <label>远程AS</label>
+                <input type="number" id="bgp-neighbor-as" placeholder="65002">
+            </div>
+            <div class="form-group">
+                <label>描述</label>
+                <input type="text" id="bgp-neighbor-desc" placeholder="上游ISP">
+            </div>
+            <div class="form-group">
+                <button class="btn btn-primary" onclick="addBGPNeighbor()">添加邻居</button>
+            </div>
+        </div>
+    </div>
+    <table id="bgp-neighbor-config-table">
+        <thead>
+            <tr>
+                <th>IP地址</th>
+                <th>远程AS</th>
+                <th>描述</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="bgp-neighbor-config-list">
+            <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">暂无邻居配置</td></tr>
+        </tbody>
+    </table>
+
+    <!-- 宣告网络 -->
+    <h3 style="margin-top: 15px; color: var(--text-muted);">宣告网络</h3>
+    <div class="form-row">
+        <div class="form-group">
+            <label>网络地址</label>
+            <input type="text" id="bgp-network" placeholder="10.0.0.0/8">
+        </div>
+        <div class="form-group">
+            <button class="btn btn-primary" onclick="addBGPNetwork()">添加网络</button>
+        </div>
+    </div>
+    <div id="bgp-network-list" class="network-tags">
+        <!-- 动态填充 -->
+    </div>
+
+    <!-- 重分发 -->
+    <div class="form-row" style="margin-top: 15px;">
+        <div class="form-group">
+            <label>重分发</label>
+            <select id="bgp-redistribute" multiple>
+                <option value="connected">connected</option>
+                <option value="static">static</option>
+                <option value="ospf">ospf</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="btn-group" style="margin-top: 15px;">
+        <button class="btn btn-success" onclick="configureBGP()">应用配置</button>
+        <button class="btn btn-danger" onclick="disableBGP()">禁用BGP</button>
+        <button class="btn btn-primary" onclick="showBGPRoutes()">查看路由</button>
+    </div>
+
+    <!-- BGP邻居状态 -->
+    <h3 style="margin-top: 20px; color: var(--text-muted);">BGP邻居状态</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>邻居</th>
+                <th>AS</th>
+                <th>Up/Down</th>
+                <th>状态/前缀</th>
+                <th>消息接收</th>
+                <th>消息发送</th>
+            </tr>
+        </thead>
+        <tbody id="bgp-neighbor-list">
+            <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- 路由表 -->
+<div class="section">
+    <h2>路由表</h2>
+    <div class="form-row">
+        <div class="form-group">
+            <label>协议过滤</label>
+            <select id="route-protocol" onchange="loadRoutes()">
+                <option value="">全部</option>
+                <option value="ospf">OSPF</option>
+                <option value="bgp">BGP</option>
+                <option value="static">静态</option>
+                <option value="connected">直连</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <button class="btn btn-primary" onclick="loadRoutes()">刷新</button>
+            <button class="btn btn-primary" onclick="showRouteSummary()">查看摘要</button>
+        </div>
+    </div>
+    <div class="route-output" id="route-output">
+        <pre id="route-content">加载中...</pre>
+    </div>
+</div>
+
+<!-- OSPF数据库模态框 -->
+<div class="modal" id="ospf-database-modal">
+    <div class="modal-content modal-large">
+        <div class="modal-header">
+            <h3>OSPF数据库</h3>
+            <button class="modal-close" onclick="closeOSPFDatabase()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <pre id="ospf-database-content">加载中...</pre>
+        </div>
+    </div>
+</div>
+
+<!-- BGP路由模态框 -->
+<div class="modal" id="bgp-routes-modal">
+    <div class="modal-content modal-large">
+        <div class="modal-header">
+            <h3>BGP路由表</h3>
+            <button class="modal-close" onclick="closeBGPRoutes()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <pre id="bgp-routes-content">加载中...</pre>
+        </div>
+    </div>
+</div>
+
+<!-- 路由摘要模态框 -->
+<div class="modal" id="route-summary-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>路由摘要</h3>
+            <button class="modal-close" onclick="closeRouteSummary()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <pre id="route-summary-content">加载中...</pre>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .section {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .section h2 { color: var(--primary); margin-bottom: 15px; font-size: 18px; }
+    .status-card.active .value { color: #86efac; }
+    .status-card.inactive .value { color: #fca5a5; }
+    .status-card.warning .value { color: #fcd34d; }
+    .form-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+    .form-group { display: flex; flex-direction: column; }
+    .form-group label { color: var(--text-muted); margin-bottom: 5px; font-size: 14px; }
+    .form-group input, .form-group select, .form-group textarea {
+        padding: 10px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-size: 14px;
+    }
+    .form-group input:focus, .form-group select:focus {
+        border-color: var(--primary);
+        outline: none;
+    }
+    .form-group select[multiple] {
+        height: 80px;
+    }
+    .help-text { color: var(--text-muted); font-size: 12px; margin-top: 5px; }
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        margin-right: 10px;
+        margin-bottom: 10px;
+    }
+    .btn-primary { background: var(--primary); color: var(--bg-card); }
+    .btn-success { background: #86efac; color: var(--bg-card); }
+    .btn-danger { background: #fca5a5; color: var(--bg-card); }
+    .btn-warning { background: #fcd34d; color: var(--bg-card); }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+    .btn:hover { opacity: 0.9; }
+    .btn-group { margin-bottom: 15px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--text-muted); font-weight: 600; font-size: 13px; }
+    tr:hover { background: var(--bg-card); }
+    .frr-info {
+        margin-bottom: 15px;
+        color: var(--text-muted);
+        font-size: 13px;
+    }
+    .daemon-status {
+        margin-top: 20px;
+        padding: 15px;
+        background: rgba(0,0,0,0.2);
+        border-radius: 8px;
+    }
+    .daemon-status h4 {
+        color: var(--text-muted);
+        margin-bottom: 10px;
+        font-size: 14px;
+    }
+    .daemon-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 10px;
+    }
+    .daemon-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        background: var(--bg-card);
+        border-radius: 4px;
+        font-size: 13px;
+    }
+    .daemon-item .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+    }
+    .daemon-item .status-dot.active { background: #86efac; }
+    .daemon-item .status-dot.inactive { background: #fca5a5; }
+    .neighbor-config {
+        padding: 15px;
+        background: rgba(0,0,0,0.2);
+        border-radius: 8px;
+        margin-bottom: 15px;
+    }
+    .network-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+    }
+    .network-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 5px 10px;
+        background: var(--primary);
+        color: var(--bg-card);
+        border-radius: 4px;
+        font-size: 13px;
+    }
+    .network-tag .remove {
+        cursor: pointer;
+        font-weight: bold;
+    }
+    .route-output {
+        background: rgba(0,0,0,0.3);
+        border-radius: 8px;
+        padding: 15px;
+        max-height: 400px;
+        overflow: auto;
+    }
+    .route-output pre {
+        margin: 0;
+        font-family: monospace;
+        font-size: 13px;
+        color: var(--text);
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.7);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+    }
+    .modal.show { display: flex; }
+    .modal-content {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+        width: 90%;
+        max-width: 600px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+    .modal-large {
+        max-width: 900px;
+    }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .modal-header h3 { color: var(--primary); }
+    .modal-close { background: none; border: none; color: var(--text-muted); font-size: 24px; cursor: pointer; }
+    .modal-body pre {
+        background: rgba(0,0,0,0.3);
+        padding: 15px;
+        border-radius: 8px;
+        font-family: monospace;
+        font-size: 13px;
+        color: var(--text);
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 500px;
+        overflow: auto;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// BGP邻居配置列表
+    let bgpNeighbors = [];
+    // BGP网络列表
+    let bgpNetworks = [];
+
+    // 初始化
+    document.addEventListener('DOMContentLoaded', function() {
+        refreshStatus();
+        loadOSPFNeighbors();
+        loadBGPNeighbors();
+        loadRoutes();
+    });
+
+    // 刷新状态
+    function refreshStatus() {
+        loadOverallStatus();
+        loadFRRStatus();
+        loadFRRVersion();
+    }
+
+    // 加载整体状态
+    function loadOverallStatus() {
+        fetch('/routing/api/status')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const d = data.data;
+
+                    // FRR状态
+                    const frrActive = d.frr_status && d.frr_status.active;
+                    document.getElementById('frr-status').textContent = frrActive ? '运行中' : '未运行';
+                    document.getElementById('frr-status-card').className = 'status-card ' + (frrActive ? 'active' : 'inactive');
+
+                    // OSPF状态
+                    const ospfEnabled = d.ospf && d.ospf.enabled;
+                    const ospfRunning = d.ospf && d.ospf.running;
+                    document.getElementById('ospf-status').textContent = ospfRunning ? '运行中' : (ospfEnabled ? '已配置' : '未配置');
+                    document.getElementById('ospf-status-card').className = 'status-card ' + (ospfRunning ? 'active' : (ospfEnabled ? 'warning' : 'inactive'));
+
+                    // BGP状态
+                    const bgpEnabled = d.bgp && d.bgp.enabled;
+                    const bgpRunning = d.bgp && d.bgp.running;
+                    document.getElementById('bgp-status').textContent = bgpRunning ? '运行中' : (bgpEnabled ? '已配置' : '未配置');
+                    document.getElementById('bgp-status-card').className = 'status-card ' + (bgpRunning ? 'active' : (bgpEnabled ? 'warning' : 'inactive'));
+
+                    // 回填配置
+                    if (d.ospf && d.ospf.config) {
+                        document.getElementById('ospf-router-id').value = d.ospf.config.router_id || '';
+                    }
+                    if (d.bgp && d.bgp.config) {
+                        document.getElementById('bgp-local-as').value = d.bgp.config.local_as || '';
+                        document.getElementById('bgp-router-id').value = d.bgp.config.router_id || '';
+                        bgpNeighbors = d.bgp.config.neighbors || [];
+                        bgpNetworks = d.bgp.config.networks || [];
+                        renderBGPNeighborConfig();
+                        renderBGPNetworks();
+                    }
+                }
+            });
+    }
+
+    // 加载FRR状态
+    function loadFRRStatus() {
+        fetch('/routing/api/frr/status')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const d = data.data;
+                    const grid = document.getElementById('daemon-grid');
+
+                    const daemonNames = {
+                        zebra: 'Zebra',
+                        ospfd: 'OSPF',
+                        bgpd: 'BGP',
+                        ospf6d: 'OSPF6',
+                        ripd: 'RIP',
+                        ripngd: 'RIPng',
+                        isisd: 'IS-IS'
+                    };
+
+                    grid.innerHTML = Object.keys(daemonNames).map(name => {
+                        const active = d.daemons && d.daemons[name];
+                        return '<div class="daemon-item">' +
+                            '<span class="status-dot ' + (active ? 'active' : 'inactive') + '"></span>' +
+                            '<span>' + daemonNames[name] + '</span>' +
+                            '</div>';
+                    }).join('');
+                }
+            });
+    }
+
+    // 加载FRR版本
+    function loadFRRVersion() {
+        fetch('/routing/api/frr/version')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    document.getElementById('frr-version').textContent = data.data.version;
+                }
+            });
+    }
+
+    // FRR服务控制
+    function startFRR() {
+        fetch('/routing/api/frr/start', {method: 'POST'})
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                alert(data.status === 'ok' ? 'FRR服务已启动' : '启动失败');
+                refreshStatus();
+            });
+    }
+
+    function stopFRR() {
+        if (!confirm('确定要停止FRR服务吗？这将影响所有动态路由功能。')) return;
+        fetch('/routing/api/frr/stop', {method: 'POST'})
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                alert(data.status === 'ok' ? 'FRR服务已停止' : '停止失败');
+                refreshStatus();
+            });
+    }
+
+    function restartFRR() {
+        if (!confirm('确定要重启FRR服务吗？')) return;
+        fetch('/routing/api/frr/restart', {method: 'POST'})
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                alert(data.status === 'ok' ? 'FRR服务已重启' : '重启失败');
+                refreshStatus();
+            });
+    }
+
+    // OSPF配置
+    function configureOSPF() {
+        const routerId = document.getElementById('ospf-router-id').value;
+        const areaId = document.getElementById('ospf-area-id').value;
+        const network = document.getElementById('ospf-network').value;
+
+        if (!routerId) {
+            alert('请输入Router ID');
+            return;
+        }
+
+        const areas = [];
+        if (network && areaId) {
+            areas.push({
+                area_id: areaId,
+                networks: [network],
+                type: 'normal'
+            });
+        }
+
+        const redistributeSelect = document.getElementById('ospf-redistribute');
+        const redistribute = Array.from(redistributeSelect.selectedOptions).map(o => o.value);
+
+        const passiveInput = document.getElementById('ospf-passive').value;
+        const passiveInterfaces = passiveInput ? passiveInput.split(',').map(s => s.trim()).filter(s => s) : [];
+
+        const data = {
+            router_id: routerId,
+            areas: areas,
+            redistribute: redistribute,
+            passive_interfaces: passiveInterfaces
+        };
+
+        fetch('/routing/api/ospf/configure', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(result => {
+            alert(result.status === 'ok' ? 'OSPF配置成功' : '配置失败: ' + (result.message || ''));
+            refreshStatus();
+        });
+    }
+
+    function disableOSPF() {
+        if (!confirm('确定要禁用OSPF吗？')) return;
+        fetch('/routing/api/ospf/disable', {method: 'POST'})
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                alert(data.status === 'ok' ? 'OSPF已禁用' : '禁用失败');
+                refreshStatus();
+            });
+    }
+
+    // 加载OSPF邻居
+    function loadOSPFNeighbors() {
+        fetch('/routing/api/ospf/neighbors')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const neighbors = data.data;
+                    document.getElementById('ospf-neighbor-count').textContent = neighbors.length;
+
+                    const tbody = document.getElementById('ospf-neighbor-list');
+                    if (neighbors.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">暂无OSPF邻居</td></tr>';
+                    } else {
+                        tbody.innerHTML = neighbors.map(n => '<tr>' +
+                            '<td>' + n.neighbor_id + '</td>' +
+                            '<td>' + n.priority + '</td>' +
+                            '<td style="color: #86efac;">' + n.state + '</td>' +
+                            '<td>' + n.dead_time + '</td>' +
+                            '<td>' + n.address + '</td>' +
+                            '<td>' + n.interface + '</td>' +
+                            '</tr>'
+                        ).join('');
+                    }
+                }
+            });
+    }
+
+    // 显示OSPF数据库
+    function showOSPFDatabase() {
+        document.getElementById('ospf-database-modal').classList.add('show');
+        document.getElementById('ospf-database-content').textContent = '加载中...';
+
+        fetch('/routing/api/ospf/database')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    document.getElementById('ospf-database-content').textContent = data.data.output || '无数据';
+                }
+            });
+    }
+
+    function closeOSPFDatabase() {
+        document.getElementById('ospf-database-modal').classList.remove('show');
+    }
+
+    // BGP邻居配置
+    function addBGPNeighbor() {
+        const ip = document.getElementById('bgp-neighbor-ip').value;
+        const remoteAs = document.getElementById('bgp-neighbor-as').value;
+        const desc = document.getElementById('bgp-neighbor-desc').value;
+
+        if (!ip || !remoteAs) {
+            alert('请输入邻居IP和远程AS号');
+            return;
+        }
+
+        bgpNeighbors.push({
+            ip: ip,
+            remote_as: parseInt(remoteAs),
+            description: desc,
+            enabled: true
+        });
+
+        document.getElementById('bgp-neighbor-ip').value = '';
+        document.getElementById('bgp-neighbor-as').value = '';
+        document.getElementById('bgp-neighbor-desc').value = '';
+
+        renderBGPNeighborConfig();
+    }
+
+    function removeBGPNeighbor(index) {
+        bgpNeighbors.splice(index, 1);
+        renderBGPNeighborConfig();
+    }
+
+    function renderBGPNeighborConfig() {
+        const tbody = document.getElementById('bgp-neighbor-config-list');
+        if (bgpNeighbors.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">暂无邻居配置</td></tr>';
+        } else {
+            tbody.innerHTML = bgpNeighbors.map((n, i) => '<tr>' +
+                '<td>' + n.ip + '</td>' +
+                '<td>' + n.remote_as + '</td>' +
+                '<td>' + (n.description || '-') + '</td>' +
+                '<td><button class="btn btn-sm btn-danger" onclick="removeBGPNeighbor(' + i + ')">删除</button></td>' +
+                '</tr>'
+            ).join('');
+        }
+    }
+
+    // BGP网络配置
+    function addBGPNetwork() {
+        const network = document.getElementById('bgp-network').value;
+        if (!network) {
+            alert('请输入网络地址');
+            return;
+        }
+
+        if (!bgpNetworks.includes(network)) {
+            bgpNetworks.push(network);
+        }
+
+        document.getElementById('bgp-network').value = '';
+        renderBGPNetworks();
+    }
+
+    function removeBGPNetwork(index) {
+        bgpNetworks.splice(index, 1);
+        renderBGPNetworks();
+    }
+
+    function renderBGPNetworks() {
+        const container = document.getElementById('bgp-network-list');
+        if (bgpNetworks.length === 0) {
+            container.innerHTML = '<span style="color: var(--text-muted); font-size: 13px;">暂无宣告网络</span>';
+        } else {
+            container.innerHTML = bgpNetworks.map((n, i) =>
+                '<span class="network-tag">' + n +
+                '<span class="remove" onclick="removeBGPNetwork(' + i + ')">&times;</span>' +
+                '</span>'
+            ).join('');
+        }
+    }
+
+    // BGP配置
+    function configureBGP() {
+        const localAs = document.getElementById('bgp-local-as').value;
+        const routerId = document.getElementById('bgp-router-id').value;
+
+        if (!localAs || !routerId) {
+            alert('请输入本地AS号和Router ID');
+            return;
+        }
+
+        const redistributeSelect = document.getElementById('bgp-redistribute');
+        const redistribute = Array.from(redistributeSelect.selectedOptions).map(o => o.value);
+
+        const data = {
+            local_as: parseInt(localAs),
+            router_id: routerId,
+            neighbors: bgpNeighbors,
+            networks: bgpNetworks,
+            redistribute: redistribute
+        };
+
+        fetch('/routing/api/bgp/configure', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(result => {
+            alert(result.status === 'ok' ? 'BGP配置成功' : '配置失败: ' + (result.message || ''));
+            refreshStatus();
+            loadBGPNeighbors();
+        });
+    }
+
+    function disableBGP() {
+        if (!confirm('确定要禁用BGP吗？')) return;
+        fetch('/routing/api/bgp/disable', {method: 'POST'})
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                alert(data.status === 'ok' ? 'BGP已禁用' : '禁用失败');
+                refreshStatus();
+            });
+    }
+
+    // 加载BGP邻居
+    function loadBGPNeighbors() {
+        fetch('/routing/api/bgp/neighbors')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const neighbors = data.data;
+                    document.getElementById('bgp-neighbor-count').textContent = neighbors.length;
+
+                    const tbody = document.getElementById('bgp-neighbor-list');
+                    if (neighbors.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">暂无BGP邻居</td></tr>';
+                    } else {
+                        tbody.innerHTML = neighbors.map(n => '<tr>' +
+                            '<td>' + n.neighbor + '</td>' +
+                            '<td>' + n.as + '</td>' +
+                            '<td>' + n.up_down + '</td>' +
+                            '<td style="color: ' + (n.is_up ? '#86efac' : '#fca5a5') + ';">' + n.state_pfxrcd + '</td>' +
+                            '<td>' + n.msg_rcvd + '</td>' +
+                            '<td>' + n.msg_sent + '</td>' +
+                            '</tr>'
+                        ).join('');
+                    }
+                }
+            });
+    }
+
+    // 显示BGP路由
+    function showBGPRoutes() {
+        document.getElementById('bgp-routes-modal').classList.add('show');
+        document.getElementById('bgp-routes-content').textContent = '加载中...';
+
+        fetch('/routing/api/bgp/routes')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const routes = data.data;
+                    document.getElementById('bgp-routes-content').textContent =
+                        routes.map(r => r.line).join('\n') || '无BGP路由';
+                }
+            });
+    }
+
+    function closeBGPRoutes() {
+        document.getElementById('bgp-routes-modal').classList.remove('show');
+    }
+
+    // 加载路由表
+    function loadRoutes() {
+        const protocol = document.getElementById('route-protocol').value;
+        const url = '/routing/api/routes' + (protocol ? '?protocol=' + protocol : '');
+
+        fetch(url)
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const routes = data.data;
+                    document.getElementById('route-count').textContent = routes.length;
+
+                    const content = routes.map(r => r.raw).join('\n') || '无路由条目';
+                    document.getElementById('route-content').textContent = content;
+                }
+            });
+    }
+
+    // 显示路由摘要
+    function showRouteSummary() {
+        document.getElementById('route-summary-modal').classList.add('show');
+        document.getElementById('route-summary-content').textContent = '加载中...';
+
+        fetch('/routing/api/routes/summary')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    document.getElementById('route-summary-content').textContent = data.data.output || '无数据';
+                }
+            });
+    }
+
+    function closeRouteSummary() {
+        document.getElementById('route-summary-modal').classList.remove('show');
+    }
+</script>
+{% endblock %}

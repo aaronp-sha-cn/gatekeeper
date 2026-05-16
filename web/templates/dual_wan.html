@@ -1,0 +1,937 @@
+{% extends "base.html" %}
+
+{% block title %}双出口接入{% endblock %}
+
+{% block content %}
+<!-- 统计概览 -->
+<div class="status-grid">
+    <div class="status-card" id="card-total">
+        <h3>WAN接口数</h3>
+        <div class="value" id="stat-total">0</div>
+    </div>
+    <div class="status-card" id="card-online">
+        <h3>在线接口</h3>
+        <div class="value" id="stat-online" style="color: #86efac;">0</div>
+    </div>
+    <div class="status-card" id="card-offline">
+        <h3>离线接口</h3>
+        <div class="value" id="stat-offline" style="color: #fca5a5;">0</div>
+    </div>
+    <div class="status-card" id="card-degraded">
+        <h3>降级接口</h3>
+        <div class="value" id="stat-degraded" style="color: #fcd34d;">0</div>
+    </div>
+    <div class="status-card">
+        <h3>策略规则数</h3>
+        <div class="value" id="stat-rules">0</div>
+    </div>
+    <div class="status-card">
+        <h3>负载均衡模式</h3>
+        <div class="value" id="stat-mode" style="font-size: 14px;">主备模式</div>
+    </div>
+    <div class="status-card" id="card-monitor">
+        <h3>健康检查</h3>
+        <div class="value" id="stat-monitor" style="font-size: 14px;">未运行</div>
+    </div>
+</div>
+
+<!-- WAN接口管理 -->
+<div class="section">
+    <h2>WAN接口管理</h2>
+    
+    <div class="form-row">
+        <div class="form-group">
+            <label>物理接口 *</label>
+            <select id="wan-name">
+                <option value="">加载中...</option>
+            </select>
+            <span class="help-text">选择物理网络接口</span>
+        </div>
+        <div class="form-group">
+            <label>IP地址 *</label>
+            <input type="text" id="wan-ip" placeholder="如 192.168.1.2">
+        </div>
+        <div class="form-group">
+            <label>网关地址 *</label>
+            <input type="text" id="wan-gateway" placeholder="如 192.168.1.1">
+        </div>
+        <div class="form-group">
+            <label>描述</label>
+            <input type="text" id="wan-desc" placeholder="接口描述">
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>优先级</label>
+            <input type="number" id="wan-priority" value="1" min="1" max="100">
+            <span class="help-text">数字越小优先级越高</span>
+        </div>
+        <div class="form-group">
+            <label>权重</label>
+            <input type="number" id="wan-weight" value="1" min="1" max="100">
+            <span class="help-text">加权模式下使用</span>
+        </div>
+        <div class="form-group">
+            <label>健康检查目标</label>
+            <input type="text" id="wan-targets" value="8.8.8.8, 1.1.1.1" placeholder="用逗号分隔">
+        </div>
+    </div>
+    <button class="btn btn-primary" onclick="addWanInterface()">添加接口</button>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>接口名</th>
+                <th>IP地址</th>
+                <th>网关</th>
+                <th>状态</th>
+                <th>延迟</th>
+                <th>丢包率</th>
+                <th>优先级</th>
+                <th>权重</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="wan-list">
+            <tr><td colspan="9" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- 负载均衡配置 -->
+<div class="section">
+    <h2>负载均衡配置</h2>
+    
+    <div class="form-row">
+        <div class="form-group">
+            <label>负载均衡模式</label>
+            <select id="lb-mode">
+                <option value="failover">主备模式 - 主接口故障时切换到备用</option>
+                <option value="round_robin">轮询模式 - 流量依次分配</option>
+                <option value="weighted">加权模式 - 按权重比例分配</option>
+                <option value="source_ip">源IP哈希 - 相同源IP走同一接口</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>健康检查间隔(秒)</label>
+            <input type="number" id="lb-interval" value="10" min="5" max="300">
+        </div>
+        <div class="form-group">
+            <label>检查超时(秒)</label>
+            <input type="number" id="lb-timeout" value="3" min="1" max="30">
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>故障切换阈值</label>
+            <input type="number" id="lb-failover-threshold" value="3" min="1" max="10">
+            <span class="help-text">连续失败次数触发切换</span>
+        </div>
+        <div class="form-group">
+            <label>恢复阈值</label>
+            <input type="number" id="lb-recovery-threshold" value="2" min="1" max="10">
+            <span class="help-text">连续成功次数恢复</span>
+        </div>
+        <div class="form-group">
+            <label>自动故障切换</label>
+            <label class="toggle-switch">
+                <input type="checkbox" id="lb-auto-failover" checked>
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+    </div>
+    <button class="btn btn-primary" onclick="saveLoadBalanceConfig()">保存配置</button>
+    
+    <div style="margin-top: 20px;">
+        <button class="btn btn-success" id="btn-start-health" onclick="startHealthMonitor()">启动健康检查</button>
+        <button class="btn btn-danger" id="btn-stop-health" onclick="stopHealthMonitor()" style="display: none;">停止健康检查</button>
+    </div>
+</div>
+
+<!-- 策略路由管理 -->
+<div class="section">
+    <h2>策略路由规则</h2>
+    
+    <div class="form-row">
+        <div class="form-group">
+            <label>规则名称 *</label>
+            <input type="text" id="policy-name" placeholder="规则名称">
+        </div>
+        <div class="form-group">
+            <label>源IP/网段 *</label>
+            <input type="text" id="policy-source" placeholder="如 192.168.1.0/24">
+        </div>
+        <div class="form-group">
+            <label>目标IP/网段</label>
+            <input type="text" id="policy-dest" placeholder="留空表示任意">
+        </div>
+        <div class="form-group">
+            <label>协议</label>
+            <select id="policy-protocol">
+                <option value="">任意</option>
+                <option value="tcp">TCP</option>
+                <option value="udp">UDP</option>
+                <option value="icmp">ICMP</option>
+            </select>
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>目标端口</label>
+            <input type="number" id="policy-port" placeholder="留空表示任意" min="1" max="65535">
+        </div>
+        <div class="form-group">
+            <label>出口接口 *</label>
+            <select id="policy-wan">
+                <option value="">请先添加WAN接口</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>描述</label>
+            <input type="text" id="policy-desc" placeholder="规则描述">
+        </div>
+    </div>
+    <button class="btn btn-primary" onclick="addPolicyRule()">添加规则</button>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>名称</th>
+                <th>源IP</th>
+                <th>目标IP</th>
+                <th>协议</th>
+                <th>端口</th>
+                <th>出口接口</th>
+                <th>状态</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="policy-list">
+            <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- 故障切换日志 -->
+<div class="section">
+    <h2>故障切换日志</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>时间</th>
+                <th>接口</th>
+                <th>原状态</th>
+                <th>新状态</th>
+                <th>延迟(ms)</th>
+                <th>丢包率(%)</th>
+            </tr>
+        </thead>
+        <tbody id="failover-log">
+            <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">暂无日志</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- 手动故障切换模态框 -->
+<div class="modal" id="failover-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>手动故障切换</h3>
+            <button class="modal-close" onclick="closeFailoverModal()">&times;</button>
+        </div>
+        <div style="padding: 20px;">
+            <p style="margin-bottom: 15px; color: var(--text-muted);">选择要切换到的目标接口：</p>
+            <div id="failover-targets"></div>
+            <div style="margin-top: 20px;">
+                <button class="btn btn-success" onclick="executeFailover()">确认切换</button>
+                <button class="btn btn-danger" onclick="closeFailoverModal()">取消</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑WAN接口模态框 -->
+<div class="modal" id="wan-edit-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>编辑WAN接口</h3>
+            <button class="modal-close" onclick="closeWanEditModal()">&times;</button>
+        </div>
+        <form id="wan-edit-form">
+            <input type="hidden" id="edit-wan-id">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>接口名称</label>
+                    <input type="text" id="edit-wan-name" readonly style="background: var(--border);">
+                </div>
+                <div class="form-group">
+                    <label>IP地址</label>
+                    <input type="text" id="edit-wan-ip">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>网关地址</label>
+                    <input type="text" id="edit-wan-gateway">
+                </div>
+                <div class="form-group">
+                    <label>描述</label>
+                    <input type="text" id="edit-wan-desc">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>优先级</label>
+                    <input type="number" id="edit-wan-priority" min="1" max="100">
+                </div>
+                <div class="form-group">
+                    <label>权重</label>
+                    <input type="number" id="edit-wan-weight" min="1" max="100">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>健康检查目标</label>
+                <input type="text" id="edit-wan-targets">
+            </div>
+            <div style="margin-top: 20px;">
+                <button type="submit" class="btn btn-success">保存</button>
+                <button type="button" class="btn btn-danger" onclick="closeWanEditModal()">取消</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .section {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .section h2 { color: var(--primary); margin-bottom: 15px; font-size: 18px; }
+    .form-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+    .form-group { display: flex; flex-direction: column; }
+    .form-group label { color: var(--text-muted); margin-bottom: 5px; font-size: 14px; }
+    .form-group input, .form-group select, .form-group textarea {
+        padding: 10px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-size: 14px;
+    }
+    .form-group input:focus, .form-group select:focus {
+        border-color: var(--primary);
+        outline: none;
+    }
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        margin-right: 10px;
+        margin-bottom: 10px;
+    }
+    .btn-primary { background: var(--primary); color: var(--bg-card); }
+    .btn-success { background: #86efac; color: var(--bg-card); }
+    .btn-danger { background: #fca5a5; color: var(--bg-card); }
+    .btn-warning { background: #fcd34d; color: var(--bg-card); }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+    .btn:hover { opacity: 0.9; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--text-muted); font-weight: 600; font-size: 13px; }
+    tr:hover { background: var(--bg-card); }
+    .toggle-switch {
+        position: relative;
+        width: 50px;
+        height: 26px;
+        display: inline-block;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background-color: var(--border);
+        transition: .3s;
+        border-radius: 26px;
+    }
+    .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 20px;
+        width: 20px;
+        left: 3px;
+        bottom: 3px;
+        background-color: white;
+        transition: .3s;
+        border-radius: 50%;
+    }
+    input:checked + .toggle-slider { background-color: #86efac; }
+    input:checked + .toggle-slider:before { transform: translateX(24px); }
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.7);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+    }
+    .modal.show { display: flex; }
+    .modal-content {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        width: 90%;
+        max-width: 500px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px 20px;
+        border-bottom: 1px solid var(--border);
+    }
+    .modal-header h3 { color: var(--primary); margin: 0; }
+    .modal-close { background: none; border: none; color: var(--text-muted); font-size: 24px; cursor: pointer; }
+    .help-text { color: var(--text-muted); font-size: 12px; margin-top: 5px; }
+    .status-badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    .status-online { background: #86efac; color: #000; }
+    .status-offline { background: #fca5a5; color: #000; }
+    .status-degraded { background: #fcd34d; color: #000; }
+    .status-unknown { background: var(--border); color: var(--text); }
+    .latency-good { color: #86efac; }
+    .latency-warning { color: #fcd34d; }
+    .latency-bad { color: #fca5a5; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// 加载统计数据
+    function loadStats() {
+        fetch('/dual-wan/api/stats')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const d = data.data;
+                    document.getElementById('stat-total').textContent = d.total_wans;
+                    document.getElementById('stat-online').textContent = d.online;
+                    document.getElementById('stat-offline').textContent = d.offline;
+                    document.getElementById('stat-degraded').textContent = d.degraded;
+                    document.getElementById('stat-rules').textContent = d.policy_rules;
+                    
+                    var mode = d.load_balance_mode;
+                    var modeMap = {
+                        'failover': '主备模式',
+                        'round_robin': '轮询模式',
+                        'weighted': '加权模式',
+                        'source_ip': '源IP哈希',
+                        '0': '未配置',
+                        0: '未配置',
+                        '': '未配置',
+                        null: '未配置',
+                    };
+                    document.getElementById('stat-mode').textContent = modeMap[mode] || modeMap[String(mode)] || '未配置';
+                    
+                    document.getElementById('stat-monitor').textContent = d.monitor_running ? '运行中' : '未运行';
+                    document.getElementById('stat-monitor').style.color = d.monitor_running ? '#86efac' : '#fca5a5';
+                    
+                    // 更新按钮状态
+                    document.getElementById('btn-start-health').style.display = d.monitor_running ? 'none' : 'inline-block';
+                    document.getElementById('btn-stop-health').style.display = d.monitor_running ? 'inline-block' : 'none';
+                }
+            })
+            .catch(function(e) {
+                document.getElementById('stat-total').textContent = '-';
+                document.getElementById('stat-online').textContent = '-';
+                document.getElementById('stat-offline').textContent = '-';
+                document.getElementById('stat-degraded').textContent = '-';
+                document.getElementById('stat-rules').textContent = '-';
+                document.getElementById('stat-mode').textContent = '加载失败';
+                document.getElementById('stat-monitor').textContent = '未知';
+                document.getElementById('stat-monitor').style.color = '#fca5a5';
+            });
+    }
+
+    // 加载WAN接口列表
+    function loadWanInterfaces() {
+        fetch('/dual-wan/api/wan')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const tbody = document.getElementById('wan-list');
+                    const policySelect = document.getElementById('policy-wan');
+                    
+                    if (data.data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted);">暂无WAN接口，请添加</td></tr>';
+                        policySelect.innerHTML = '<option value="">请先添加WAN接口</option>';
+                        return;
+                    }
+                    
+                    tbody.innerHTML = data.data.map(w => `
+                        <tr>
+                            <td><strong>${w.name}</strong><br><small style="color: var(--text-muted);">${w.description || ''}</small></td>
+                            <td>${w.ip_address || '-'}</td>
+                            <td>${w.gateway || '-'}</td>
+                            <td><span class="status-badge status-${w.status}">${getStatusText(w.status)}</span></td>
+                            <td class="${getLatencyClass(w.latency_ms)}">${w.latency_ms > 0 ? w.latency_ms.toFixed(1) + ' ms' : '-'}</td>
+                            <td class="${w.packet_loss > 10 ? 'latency-bad' : w.packet_loss > 0 ? 'latency-warning' : ''}">${w.packet_loss.toFixed(1)}%</td>
+                            <td>${w.priority}</td>
+                            <td>${w.weight}</td>
+                            <td>
+                                <button class="btn btn-sm btn-primary" onclick="editWan('${w.id}')">编辑</button>
+                                <button class="btn btn-sm ${w.enabled ? 'btn-warning' : 'btn-success'}" onclick="toggleWan('${w.id}', ${!w.enabled})">
+                                    ${w.enabled ? '禁用' : '启用'}
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="removeWan('${w.id}')">删除</button>
+                            </td>
+                        </tr>
+                    `).join('');
+                    
+                    // 更新策略路由的接口选择
+                    policySelect.innerHTML = '<option value="">选择出口接口</option>' +
+                        data.data.map(w => '<option value="' + w.id + '">' + w.name + ' (' + (w.status === 'online' ? '在线' : w.status === 'offline' ? '离线' : '降级') + ')</option>').join('');
+                }
+            })
+            .catch(function(e) {
+                document.getElementById('wan-list').innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);">加载失败: ' + e.message + '</td></tr>';
+            });
+    }
+
+    // 加载策略路由规则
+    function loadPolicyRules() {
+        fetch('/dual-wan/api/policy')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const tbody = document.getElementById('policy-list');
+                    
+                    if (data.data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">暂无策略路由规则</td></tr>';
+                        return;
+                    }
+                    
+                    tbody.innerHTML = data.data.map(r => `
+                        <tr>
+                            <td><strong>${r.name}</strong></td>
+                            <td><code>${r.source_ip}</code></td>
+                            <td>${r.dest_ip || '<span style="color: var(--text-muted);">任意</span>'}</td>
+                            <td>${r.protocol || '<span style="color: var(--text-muted);">任意</span>'}</td>
+                            <td>${r.dest_port || '<span style="color: var(--text-muted);">任意</span>'}</td>
+                            <td>${r.wan_interface}</td>
+                            <td><span class="status-badge ${r.enabled ? 'status-online' : 'status-offline'}">${r.enabled ? '启用' : '禁用'}</span></td>
+                            <td>
+                                <button class="btn btn-sm ${r.enabled ? 'btn-warning' : 'btn-success'}" onclick="togglePolicy('${r.id}', ${!r.enabled})">
+                                    ${r.enabled ? '禁用' : '启用'}
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="removePolicy('${r.id}')">删除</button>
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+            });
+    }
+
+    // 加载负载均衡配置
+    function loadLoadBalanceConfig() {
+        fetch('/dual-wan/api/config')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const d = data.data;
+                    document.getElementById('lb-mode').value = d.load_balance_mode || 'failover';
+                    document.getElementById('lb-interval').value = d.health_check_interval || 10;
+                    document.getElementById('lb-timeout').value = d.health_check_timeout || 3;
+                    document.getElementById('lb-failover-threshold').value = d.failover_threshold || 3;
+                    document.getElementById('lb-recovery-threshold').value = d.recovery_threshold || 2;
+                    document.getElementById('lb-auto-failover').checked = d.auto_failover !== false;
+                }
+            });
+    }
+
+    // 加载故障切换日志
+    function loadFailoverLog() {
+        fetch('/dual-wan/api/failover/log?limit=20')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const tbody = document.getElementById('failover-log');
+                    
+                    if (data.data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">暂无日志</td></tr>';
+                        return;
+                    }
+                    
+                    tbody.innerHTML = data.data.map(l => `
+                        <tr>
+                            <td>${formatTime(l.timestamp)}</td>
+                            <td>${l.wan_name}</td>
+                            <td>${getStatusText(l.old_status)}</td>
+                            <td>${getStatusText(l.new_status)}</td>
+                            <td>${l.latency_ms ? l.latency_ms.toFixed(1) : '-'}</td>
+                            <td>${l.packet_loss ? l.packet_loss.toFixed(1) : '-'}</td>
+                        </tr>
+                    `).join('');
+                }
+            });
+    }
+
+    // 添加WAN接口
+    function addWanInterface() {
+        const data = {
+            name: document.getElementById('wan-name').value,
+            ip_address: document.getElementById('wan-ip').value,
+            gateway: document.getElementById('wan-gateway').value,
+            description: document.getElementById('wan-desc').value,
+            priority: parseInt(document.getElementById('wan-priority').value) || 1,
+            weight: parseInt(document.getElementById('wan-weight').value) || 1,
+            check_targets: document.getElementById('wan-targets').value.split(',').map(s => s.trim()).filter(s => s)
+        };
+        
+        if (!data.name || !data.ip_address || !data.gateway) {
+            alert('请填写接口名称、IP地址和网关');
+            return;
+        }
+        
+        fetch('/dual-wan/api/wan', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(result => {
+            if (result.status === 'ok') {
+                alert(result.message);
+                // 清空表单
+                document.getElementById('wan-name').value = '';
+                document.getElementById('wan-ip').value = '';
+                document.getElementById('wan-gateway').value = '';
+                document.getElementById('wan-desc').value = '';
+                loadWanInterfaces();
+                loadStats();
+            } else {
+                alert('错误: ' + result.message);
+            }
+        });
+    }
+
+    // 编辑WAN接口
+    function editWan(wanId) {
+        fetch(`/dual-wan/api/wan/${wanId}`)
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const w = data.data;
+                    document.getElementById('edit-wan-id').value = w.id;
+                    document.getElementById('edit-wan-name').value = w.name;
+                    document.getElementById('edit-wan-ip').value = w.ip_address;
+                    document.getElementById('edit-wan-gateway').value = w.gateway;
+                    document.getElementById('edit-wan-desc').value = w.description || '';
+                    document.getElementById('edit-wan-priority').value = w.priority;
+                    document.getElementById('edit-wan-weight').value = w.weight;
+                    document.getElementById('edit-wan-targets').value = (w.check_targets || []).join(', ');
+                    document.getElementById('wan-edit-modal').classList.add('show');
+                }
+            });
+    }
+
+    // 保存WAN编辑
+    document.getElementById('wan-edit-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const wanId = document.getElementById('edit-wan-id').value;
+        const data = {
+            ip_address: document.getElementById('edit-wan-ip').value,
+            gateway: document.getElementById('edit-wan-gateway').value,
+            description: document.getElementById('edit-wan-desc').value,
+            priority: parseInt(document.getElementById('edit-wan-priority').value) || 1,
+            weight: parseInt(document.getElementById('edit-wan-weight').value) || 1,
+            check_targets: document.getElementById('edit-wan-targets').value.split(',').map(s => s.trim()).filter(s => s)
+        };
+        
+        fetch(`/dual-wan/api/wan/${wanId}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(result => {
+            if (result.status === 'ok') {
+                closeWanEditModal();
+                loadWanInterfaces();
+            } else {
+                alert('错误: ' + result.message);
+            }
+        });
+    });
+
+    function closeWanEditModal() {
+        document.getElementById('wan-edit-modal').classList.remove('show');
+    }
+
+    // 切换WAN接口状态
+    function toggleWan(wanId, enable) {
+        fetch(`/dual-wan/api/wan/${wanId}/toggle`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({enabled: enable})
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(result => {
+            if (result.status === 'ok') {
+                loadWanInterfaces();
+            } else {
+                alert('错误: ' + result.message);
+            }
+        });
+    }
+
+    // 删除WAN接口
+    function removeWan(wanId) {
+        if (!confirm('确定要删除这个WAN接口吗？')) return;
+        
+        fetch(`/dual-wan/api/wan/${wanId}`, {method: 'DELETE'})
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(result => {
+                if (result.status === 'ok') {
+                    loadWanInterfaces();
+                    loadStats();
+                } else {
+                    alert('错误: ' + result.message);
+                }
+            });
+    }
+
+    // 添加策略路由规则
+    function addPolicyRule() {
+        const data = {
+            name: document.getElementById('policy-name').value,
+            source_ip: document.getElementById('policy-source').value,
+            dest_ip: document.getElementById('policy-dest').value,
+            protocol: document.getElementById('policy-protocol').value,
+            dest_port: parseInt(document.getElementById('policy-port').value) || 0,
+            wan_interface: document.getElementById('policy-wan').value,
+            description: document.getElementById('policy-desc').value
+        };
+        
+        if (!data.name || !data.source_ip || !data.wan_interface) {
+            alert('请填写规则名称、源IP和出口接口');
+            return;
+        }
+        
+        fetch('/dual-wan/api/policy', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(result => {
+            if (result.status === 'ok') {
+                alert(result.message);
+                document.getElementById('policy-name').value = '';
+                document.getElementById('policy-source').value = '';
+                document.getElementById('policy-dest').value = '';
+                document.getElementById('policy-protocol').value = '';
+                document.getElementById('policy-port').value = '';
+                document.getElementById('policy-desc').value = '';
+                loadPolicyRules();
+                loadStats();
+            } else {
+                alert('错误: ' + result.message);
+            }
+        });
+    }
+
+    // 切换策略规则状态
+    function togglePolicy(ruleId, enable) {
+        fetch(`/dual-wan/api/policy/${ruleId}/toggle`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({enabled: enable})
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(result => {
+            if (result.status === 'ok') {
+                loadPolicyRules();
+            } else {
+                alert('错误: ' + result.message);
+            }
+        });
+    }
+
+    // 删除策略规则
+    function removePolicy(ruleId) {
+        if (!confirm('确定要删除这条策略路由规则吗？')) return;
+        
+        fetch(`/dual-wan/api/policy/${ruleId}`, {method: 'DELETE'})
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(result => {
+                if (result.status === 'ok') {
+                    loadPolicyRules();
+                    loadStats();
+                } else {
+                    alert('错误: ' + result.message);
+                }
+            });
+    }
+
+    // 保存负载均衡配置
+    function saveLoadBalanceConfig() {
+        const data = {
+            load_balance_mode: document.getElementById('lb-mode').value,
+            health_check_interval: parseInt(document.getElementById('lb-interval').value),
+            health_check_timeout: parseInt(document.getElementById('lb-timeout').value),
+            failover_threshold: parseInt(document.getElementById('lb-failover-threshold').value),
+            recovery_threshold: parseInt(document.getElementById('lb-recovery-threshold').value),
+            auto_failover: document.getElementById('lb-auto-failover').checked
+        };
+        
+        fetch('/dual-wan/api/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(result => {
+            if (result.status === 'ok') {
+                alert('配置已保存');
+                loadStats();
+            } else {
+                alert('错误: ' + result.message);
+            }
+        });
+    }
+
+    // 启动健康检查
+    function startHealthMonitor() {
+        fetch('/dual-wan/api/health/start', {method: 'POST'})
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(result => {
+                if (result.status === 'ok') {
+                    alert(result.message);
+                    loadStats();
+                } else {
+                    alert('错误: ' + result.message);
+                }
+            });
+    }
+
+    // 停止健康检查
+    function stopHealthMonitor() {
+        fetch('/dual-wan/api/health/stop', {method: 'POST'})
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(result => {
+                if (result.status === 'ok') {
+                    alert(result.message);
+                    loadStats();
+                } else {
+                    alert('错误: ' + result.message);
+                }
+            });
+    }
+
+    function closeFailoverModal() {
+        document.getElementById('failover-modal').style.display = 'none';
+    }
+    function executeFailover() {
+        closeFailoverModal();
+        fetch('/dual-wan/api/failover/manual', { method: 'POST', headers: {'Content-Type': 'application/json'} })
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => { if (data.status === 'ok') { showToast('切换成功'); loadWanInterfaces(); loadStats(); } else { showToast(data.message || '切换失败', 'error'); } })
+            .catch(e => { showToast('切换失败: ' + e.message, 'error'); });
+    }
+
+    // 辅助函数
+    function getStatusText(status) {
+        const map = {
+            'online': '在线',
+            'offline': '离线',
+            'degraded': '降级',
+            'unknown': '未知',
+            'primary': '主接口'
+        };
+        return map[status] || status;
+    }
+
+    function getLatencyClass(latency) {
+        if (!latency || latency <= 0) return '';
+        if (latency < 50) return 'latency-good';
+        if (latency < 150) return 'latency-warning';
+        return 'latency-bad';
+    }
+
+    function formatTime(isoString) {
+        if (!isoString) return '-';
+        const d = new Date(isoString);
+        return d.toLocaleString('zh-CN');
+    }
+
+    // 加载物理接口列表（用于下拉框选择）
+    function loadPhysicalInterfaces() {
+        fetch('/gateway/api/interfaces')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const ifaces = data.data;
+                    const select = document.getElementById('wan-name');
+                    if (select) {
+                        select.innerHTML = '<option value="">选择物理接口</option>' +
+                            ifaces.map(i => `<option value="${i.name}">${i.name} (${i.ip || '无IP'}${i.status === 'up' ? ' - 在线' : ' - 离线'})</option>`).join('');
+                    }
+                }
+            })
+            .catch(() => {
+                const select = document.getElementById('wan-name');
+                if (select) {
+                    select.innerHTML = '<option value="">无法加载接口</option>';
+                }
+            });
+    }
+
+    // 初始化
+    document.addEventListener('DOMContentLoaded', function() {
+        loadPhysicalInterfaces();
+        loadStats();
+        loadWanInterfaces();
+        loadPolicyRules();
+        loadLoadBalanceConfig();
+        loadFailoverLog();
+        
+        // 定时刷新
+        setInterval(() => {
+            loadStats();
+            loadWanInterfaces();
+            loadFailoverLog();
+        }, 10000);
+    });
+</script>
+{% endblock %}

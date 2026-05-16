@@ -1,0 +1,575 @@
+{% extends "base.html" %}
+
+{% block title %}WAF防护{% endblock %}
+
+{% block content %}
+<!-- 统计概览 -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>总规则数</h3>
+        <div class="value" id="total-rules">-</div>
+    </div>
+    <div class="stat-card enabled">
+        <h3>已启用规则</h3>
+        <div class="value" id="enabled-rules">-</div>
+    </div>
+    <div class="stat-card blocked">
+        <h3>今日拦截</h3>
+        <div class="value" id="total-blocked">-</div>
+    </div>
+    <div class="stat-card rate">
+        <h3>拦截率</h3>
+        <div class="value" id="block-rate">-</div>
+    </div>
+</div>
+
+<!-- 规则管理 -->
+<div class="section">
+    <h2>WAF规则管理</h2>
+
+    <!-- 添加规则表单 -->
+    <div class="add-rule-form" id="add-rule-form">
+        <h3>添加自定义规则</h3>
+        <div class="form-row">
+            <div class="form-group">
+                <label>规则名称</label>
+                <input type="text" id="rule-name" placeholder="输入规则名称">
+            </div>
+            <div class="form-group">
+                <label>规则类型</label>
+                <select id="rule-type">
+                    <option value="sql_injection">SQL注入</option>
+                    <option value="xss">XSS跨站脚本</option>
+                    <option value="csrf">CSRF跨站请求伪造</option>
+                    <option value="path_traversal">路径遍历</option>
+                    <option value="file_upload">恶意文件上传</option>
+                    <option value="rce">远程命令执行</option>
+                    <option value="bot">恶意Bot</option>
+                    <option value="rate_limit">速率限制</option>
+                    <option value="custom">自定义</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>动作</label>
+                <select id="rule-action">
+                    <option value="block">拦截 (block)</option>
+                    <option value="log">记录 (log)</option>
+                    <option value="allow">放行 (allow)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>严重程度</label>
+                <select id="rule-severity">
+                    <option value="low">低 (low)</option>
+                    <option value="medium" selected>中 (medium)</option>
+                    <option value="high">高 (high)</option>
+                    <option value="critical">严重 (critical)</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group" style="flex: 2;">
+                <label>匹配模式 (正则表达式)</label>
+                <input type="text" id="rule-pattern" placeholder="例如: union\s+select">
+            </div>
+            <div class="form-group" style="flex: 2;">
+                <label>描述</label>
+                <input type="text" id="rule-description" placeholder="规则描述（可选）">
+            </div>
+            <div class="form-group" style="display: flex; align-items: flex-end;">
+                <button class="btn btn-primary" onclick="addRule()">添加规则</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 规则列表 -->
+    <table class="rules-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>名称</th>
+                <th>类型</th>
+                <th>动作</th>
+                <th>严重程度</th>
+                <th>命中次数</th>
+                <th>状态</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="rules-tbody">
+            <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- 测试面板 -->
+<div class="section">
+    <h2>规则测试面板</h2>
+    <div class="test-panel">
+        <div class="form-row">
+            <div class="form-group">
+                <label>HTTP方法</label>
+                <select id="test-method">
+                    <option value="GET">GET</option>
+                    <option value="POST">POST</option>
+                    <option value="PUT">PUT</option>
+                    <option value="DELETE">DELETE</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex: 2;">
+                <label>请求URL</label>
+                <input type="text" id="test-url" placeholder="/api/data?id=1" value="/search?q=test">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group" style="flex: 1;">
+                <label>请求体 (Body)</label>
+                <textarea id="test-body" rows="3" placeholder="输入请求体内容进行测试"></textarea>
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <button class="btn btn-primary" onclick="testWAF()">测试</button>
+            <span id="test-result" style="font-size: 14px;"></span>
+        </div>
+    </div>
+</div>
+
+<!-- WAF日志 -->
+<div class="section">
+    <h2>WAF拦截日志</h2>
+    <table class="logs-table">
+        <thead>
+            <tr>
+                <th>时间</th>
+                <th>客户端IP</th>
+                <th>方法</th>
+                <th>URL</th>
+                <th>匹配规则</th>
+                <th>类型</th>
+                <th>动作</th>
+            </tr>
+        </thead>
+        <tbody id="logs-tbody">
+            <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+    <div class="pagination" id="logs-pagination"></div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 统计卡片 */
+    .stat-card.enabled .value { color: #86efac; }
+    .stat-card.rate .value { color: #fcd34d; }
+
+    /* 区块 */
+    .section { margin-bottom: 30px; }
+    .section h2 { color: var(--primary); margin-bottom: 15px; font-size: 18px; }
+    .section h3 { color: var(--text); margin-bottom: 12px; font-size: 15px; }
+
+    /* 表单 */
+    .form-row {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+    }
+    .form-group {
+        flex: 1;
+        min-width: 180px;
+    }
+    .form-group label {
+        display: block;
+        color: var(--text-muted);
+        font-size: 13px;
+        margin-bottom: 5px;
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        width: 100%;
+        padding: 8px 10px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-size: 14px;
+        box-sizing: border-box;
+    }
+    .form-group textarea {
+        resize: vertical;
+        font-family: monospace;
+    }
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+        outline: none;
+        border-color: var(--primary);
+    }
+
+    /* 添加规则表单 */
+    .add-rule-form {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    /* 数据表格 */
+    .rules-table, .logs-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .rules-table th, .rules-table td,
+    .logs-table th, .logs-table td {
+        padding: 10px 12px;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+        font-size: 14px;
+    }
+    .rules-table th, .logs-table th {
+        color: var(--text-muted);
+        font-weight: 600;
+        font-size: 13px;
+    }
+    .rules-table tr:hover, .logs-table tr:hover {
+        background: rgba(37, 99, 235, 0.05);
+    }
+
+    /* 标签样式 */
+    .tag {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .tag-block { background: rgba(252, 165, 165, 0.2); color: #fca5a5; }
+    .tag-log { background: rgba(252, 211, 77, 0.2); color: #fcd34d; }
+    .tag-allow { background: rgba(134, 239, 172, 0.2); color: #86efac; }
+    .tag-critical { background: rgba(252, 165, 165, 0.2); color: #fca5a5; }
+    .tag-high { background: rgba(252, 211, 77, 0.2); color: #fcd34d; }
+    .tag-medium { background: rgba(147, 197, 253, 0.2); color: #93c5fd; }
+    .tag-low { background: rgba(134, 239, 172, 0.2); color: #86efac; }
+    .tag-enabled { background: rgba(134, 239, 172, 0.2); color: #86efac; }
+    .tag-disabled { background: rgba(148, 163, 184, 0.2); color: #94a3b8; }
+
+    /* 按钮 */
+    .btn {
+        padding: 6px 14px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+        transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-danger { background: #ef4444; color: #fff; }
+    .btn-success { background: #22c55e; color: #fff; }
+    .btn-sm { padding: 3px 10px; font-size: 12px; }
+    .btn-outline {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+    }
+    .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+
+    /* 操作按钮组 */
+    .action-btns { display: flex; gap: 6px; }
+
+    /* 测试面板 */
+    .test-panel {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 20px;
+    }
+    #test-result.pass { color: #86efac; }
+    #test-result.fail { color: #fca5a5; }
+
+    /* 分页 */
+    .pagination {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 15px;
+    }
+    .pagination button {
+        padding: 5px 12px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        cursor: pointer;
+        font-size: 13px;
+    }
+    .pagination button:hover { border-color: var(--primary); }
+    .pagination button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* 规则描述提示 */
+    .rule-desc {
+        color: var(--text-muted);
+        font-size: 12px;
+        max-width: 300px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* URL列 */
+    .url-cell {
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// ---- 加载统计数据 ----
+    function loadStats() {
+        fetch('/waf/api/stats')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const d = data.data;
+                    document.getElementById('total-rules').textContent = d.total_rules;
+                    document.getElementById('enabled-rules').textContent = d.enabled_rules;
+                    document.getElementById('total-blocked').textContent = d.total_blocked;
+                    document.getElementById('block-rate').textContent = d.block_rate + '%';
+                }
+            })
+            .catch(() => {});
+    }
+
+    // ---- 加载规则列表 ----
+    function loadRules() {
+        fetch('/waf/api/rules')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                const tbody = document.getElementById('rules-tbody');
+                if (data.status === 'ok' && data.data.rules.length > 0) {
+                    tbody.innerHTML = data.data.rules.map(rule => {
+                        const actionClass = 'tag-' + rule.action;
+                        const severityClass = 'tag-' + rule.severity;
+                        const statusClass = rule.enabled ? 'tag-enabled' : 'tag-disabled';
+                        const statusText = rule.enabled ? '启用' : '禁用';
+                        return `<tr>
+                            <td>${rule.id}</td>
+                            <td title="${rule.description || ''}">${rule.name}</td>
+                            <td>${rule.rule_type}</td>
+                            <td><span class="tag ${actionClass}">${rule.action}</span></td>
+                            <td><span class="tag ${severityClass}">${rule.severity}</span></td>
+                            <td>${rule.hit_count}</td>
+                            <td><span class="tag ${statusClass}">${statusText}</span></td>
+                            <td>
+                                <div class="action-btns">
+                                    <button class="btn btn-sm btn-outline" onclick="toggleRule(${rule.id}, ${!rule.enabled})">
+                                        ${rule.enabled ? '禁用' : '启用'}
+                                    </button>
+                                    <button class="btn btn-sm btn-danger" onclick="deleteRule(${rule.id})">删除</button>
+                                </div>
+                            </td>
+                        </tr>`;
+                    }).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">暂无规则</td></tr>';
+                }
+            })
+            .catch(() => {});
+    }
+
+    // ---- 添加规则 ----
+    function addRule() {
+        const name = document.getElementById('rule-name').value.trim();
+        const rule_type = document.getElementById('rule-type').value;
+        const pattern = document.getElementById('rule-pattern').value.trim();
+        const action = document.getElementById('rule-action').value;
+        const severity = document.getElementById('rule-severity').value;
+        const description = document.getElementById('rule-description').value.trim();
+
+        if (!name) { alert('请输入规则名称'); return; }
+        if (!pattern) { alert('请输入匹配模式'); return; }
+
+        fetch('/waf/api/rules', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name, rule_type, pattern, action, severity, description })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                alert('规则添加成功');
+                document.getElementById('rule-name').value = '';
+                document.getElementById('rule-pattern').value = '';
+                document.getElementById('rule-description').value = '';
+                loadRules();
+                loadStats();
+            } else {
+                alert('添加失败: ' + data.message);
+            }
+        })
+        .catch(e => alert('请求失败: ' + e));
+    }
+
+    // ---- 切换规则状态 ----
+    function toggleRule(ruleId, enabled) {
+        fetch(`/waf/api/rules/${ruleId}/toggle`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ enabled })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                loadRules();
+                loadStats();
+            } else {
+                alert('操作失败: ' + data.message);
+            }
+        })
+        .catch(e => alert('请求失败: ' + e));
+    }
+
+    // ---- 删除规则 ----
+    function deleteRule(ruleId) {
+        if (!confirm('确定要删除此规则吗？')) return;
+
+        fetch(`/waf/api/rules/${ruleId}`, {
+            method: 'DELETE',
+            headers: {'Content-Type': 'application/json'}
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                loadRules();
+                loadStats();
+            } else {
+                alert('删除失败: ' + data.message);
+            }
+        })
+        .catch(e => alert('请求失败: ' + e));
+    }
+
+    // ---- 测试WAF ----
+    function testWAF() {
+        const method = document.getElementById('test-method').value;
+        const url = document.getElementById('test-url').value.trim();
+        const body = document.getElementById('test-body').value;
+        const resultEl = document.getElementById('test-result');
+
+        if (!url) { alert('请输入请求URL'); return; }
+
+        resultEl.textContent = '测试中...';
+        resultEl.className = '';
+
+        fetch('/waf/api/test', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ method, url, body })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                const d = data.data;
+                if (d.allowed) {
+                    resultEl.textContent = '通过 - ' + d.reason;
+                    resultEl.className = 'pass';
+                } else {
+                    resultEl.textContent = '拦截 - ' + d.reason + ' (动作: ' + d.action + ')';
+                    resultEl.className = 'fail';
+                }
+            } else {
+                resultEl.textContent = '测试失败: ' + data.message;
+                resultEl.className = 'fail';
+            }
+        })
+        .catch(e => {
+            resultEl.textContent = '请求失败: ' + e;
+            resultEl.className = 'fail';
+        });
+    }
+
+    // ---- 加载WAF日志 ----
+    let logsPage = 1;
+    function loadLogs(page) {
+        if (page !== undefined) logsPage = page;
+        fetch(`/waf/api/logs?page=${logsPage}&per_page=20`)
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                const tbody = document.getElementById('logs-tbody');
+                if (data.status === 'ok' && data.data.logs.length > 0) {
+                    tbody.innerHTML = data.data.logs.map(log => {
+                        const actionClass = log.action === 'block' ? 'tag-block' : (log.action === 'log' ? 'tag-log' : 'tag-allow');
+                        const ts = log.timestamp ? new Date(log.timestamp).toLocaleString() : '-';
+                        return `<tr>
+                            <td>${ts}</td>
+                            <td>${log.client_ip}</td>
+                            <td>${log.method}</td>
+                            <td class="url-cell" title="${log.url}">${log.url}</td>
+                            <td>${log.rule_name}</td>
+                            <td>${log.rule_type}</td>
+                            <td><span class="tag ${actionClass}">${log.action}</span></td>
+                        </tr>`;
+                    }).join('');
+
+                    // 分页
+                    renderPagination(data.data.total, data.data.page, data.data.per_page);
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">暂无拦截日志</td></tr>';
+                    document.getElementById('logs-pagination').innerHTML = '';
+                }
+            })
+            .catch(() => {});
+    }
+
+    function renderPagination(total, page, perPage) {
+        const totalPages = Math.ceil(total / perPage);
+        const container = document.getElementById('logs-pagination');
+        if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+        let html = '';
+        html += `<button ${page <= 1 ? 'disabled' : ''} onclick="loadLogs(${page - 1})">上一页</button>`;
+
+        const maxVisible = 5;
+        let startPage = Math.max(1, page - Math.floor(maxVisible / 2));
+        let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+        if (endPage - startPage < maxVisible - 1) {
+            startPage = Math.max(1, endPage - maxVisible + 1);
+        }
+
+        for (let i = startPage; i <= endPage; i++) {
+            html += `<button class="${i === page ? 'active' : ''}" onclick="loadLogs(${i})">${i}</button>`;
+        }
+
+        html += `<button ${page >= totalPages ? 'disabled' : ''} onclick="loadLogs(${page + 1})">下一页</button>`;
+        container.innerHTML = html;
+    }
+
+    // ---- 初始化 ----
+    loadStats();
+    loadRules();
+    loadLogs(1);
+
+    // 定时刷新
+    setInterval(loadStats, 30000);
+    setInterval(loadLogs, 30000);
+</script>
+{% endblock %}

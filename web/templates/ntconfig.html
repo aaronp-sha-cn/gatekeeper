@@ -1,0 +1,1661 @@
+{% extends "base.html" %}
+
+{% block title %}基线检查{% endblock %}
+
+{% block content %}
+<!-- 统计概览 -->
+<div class="stats-grid">
+    <div class="stat-card info">
+        <div class="stat-icon">&#128196;</div>
+        <div class="stat-info">
+            <h3 id="stat-rules">--</h3>
+            <p>基线规则</p>
+        </div>
+    </div>
+    <div class="stat-card success">
+        <div class="stat-icon">&#128187;</div>
+        <div class="stat-info">
+            <h3 id="stat-devices">--</h3>
+            <p>设备配置</p>
+        </div>
+    </div>
+    <div class="stat-card warning">
+        <div class="stat-icon">&#128736;</div>
+        <div class="stat-info">
+            <h3 id="stat-tasks">--</h3>
+            <p>检查任务</p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">&#9989;</div>
+        <div class="stat-info">
+            <h3 id="stat-completed">--</h3>
+            <p>已完成任务</p>
+        </div>
+    </div>
+</div>
+
+<!-- 标签页导航 -->
+<div class="tabs-container">
+    <div class="tabs-nav">
+        <button class="tab-btn active" data-tab="devices">设备配置</button>
+        <button class="tab-btn" data-tab="rules">基线规则</button>
+        <button class="tab-btn" data-tab="tasks">检查任务</button>
+        <button class="tab-btn" data-tab="results">检查结果</button>
+    </div>
+
+    <!-- 设备配置Tab -->
+    <div class="tab-content active" id="tab-devices">
+        <div class="section-header">
+            <h3>设备配置管理</h3>
+            <div class="header-actions">
+                <button class="btn" onclick="downloadTemplate('cisco')" title="下载Cisco模板">&#128196; Cisco模板</button>
+                <button class="btn" onclick="downloadTemplate('huawei')" title="下载华为模板">&#128196; 华为模板</button>
+                <button class="btn" onclick="downloadTemplate('h3c')" title="下载H3C模板">&#128196; H3C模板</button>
+                <button class="btn btn-primary" onclick="openImportModal()">&#128194; 批量导入</button>
+                <label class="btn btn-primary" for="device-upload">
+                    &#128194; 上传配置
+                </label>
+                <input type="file" id="device-upload" accept=".txt,.cfg,.conf" style="display:none" onchange="uploadDeviceConfig(this)">
+            </div>
+        </div>
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>文件名</th>
+                        <th>主机名</th>
+                        <th>设备地址</th>
+                        <th>用户名</th>
+                        <th>厂商</th>
+                        <th>类型</th>
+                        <th>上传时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="devices-tbody">
+                    <tr><td colspan="8" class="empty">暂无设备配置，请上传配置文件</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 基线规则Tab -->
+    <div class="tab-content" id="tab-rules">
+        <div class="section-header">
+            <h3>基线规则管理</h3>
+            <div class="header-actions">
+                <button class="btn btn-primary" onclick="showAddRuleModal()">&#10133; 添加规则</button>
+            </div>
+        </div>
+        <div class="filter-bar">
+            <select id="filter-rule-category" onchange="loadRules()">
+                <option value="">全部分类</option>
+                <option value="账户管理">账户管理</option>
+                <option value="访问控制">访问控制</option>
+                <option value="日志审计">日志审计</option>
+                <option value="网络服务">网络服务</option>
+                <option value="安全加固">安全加固</option>
+            </select>
+            <select id="filter-rule-vendor" onchange="loadRules()">
+                <option value="">全部厂商</option>
+                <option value="all">通用</option>
+                <option value="cisco">Cisco</option>
+                <option value="huawei">Huawei</option>
+                <option value="h3c">H3C</option>
+            </select>
+        </div>
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>名称</th>
+                        <th>类别</th>
+                        <th>厂商</th>
+                        <th>严重度</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="rules-tbody">
+                    <tr><td colspan="7" class="empty">加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 检查任务Tab -->
+    <div class="tab-content" id="tab-tasks">
+        <div class="section-header">
+            <h3>创建检查任务</h3>
+        </div>
+        <div class="task-form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>任务名称</label>
+                    <input type="text" id="task-name" placeholder="输入任务名称">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>选择设备 (可多选)</label>
+                    <div class="checkbox-toolbar">
+                        <button type="button" class="btn btn-sm" onclick="toggleAllCheckboxes('task-devices', true)">全选</button>
+                        <button type="button" class="btn btn-sm" onclick="toggleAllCheckboxes('task-devices', false)">取消</button>
+                        <span class="text-muted" id="device-select-count"></span>
+                    </div>
+                    <div class="checkbox-list" id="task-devices">
+                        <p class="text-muted">请先上传设备配置</p>
+                    </div>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>选择规则 (可多选)</label>
+                    <div class="checkbox-toolbar">
+                        <button type="button" class="btn btn-sm" onclick="toggleAllCheckboxes('task-rules', true)">全选</button>
+                        <button type="button" class="btn btn-sm" onclick="toggleAllCheckboxes('task-rules', false)">取消</button>
+                        <input type="text" id="rule-search" placeholder="搜索规则..." oninput="filterRuleCheckboxes()" style="margin-left: 8px; padding: 4px 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; width: 180px;">
+                        <span class="text-muted" id="rule-select-count"></span>
+                    </div>
+                    <div class="checkbox-list" id="task-rules">
+                        <p class="text-muted">加载中...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-primary" onclick="createTask()">&#128736; 创建任务</button>
+            </div>
+        </div>
+
+        <div class="section-header" style="margin-top: 30px;">
+            <h3>任务列表</h3>
+        </div>
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>任务名称</th>
+                        <th>状态</th>
+                        <th>进度</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="tasks-tbody">
+                    <tr><td colspan="5" class="empty">暂无检查任务</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 检查结果Tab -->
+    <div class="tab-content" id="tab-results">
+        <div class="section-header">
+            <h3>检查结果</h3>
+            <div class="header-actions">
+                <select id="result-task-select" onchange="loadTaskResults()">
+                    <option value="">选择任务</option>
+                </select>
+                <button class="btn btn-secondary" id="btn-export-html" onclick="exportReport('html')" disabled>&#128190; 导出HTML</button>
+                <button class="btn btn-secondary" id="btn-export-json" onclick="exportReport('json')" disabled>&#128190; 导出JSON</button>
+            </div>
+        </div>
+        <div class="result-summary" id="result-summary" style="display:none;">
+            <div class="summary-card pass">
+                <span class="count" id="result-pass">0</span>
+                <span class="label">通过</span>
+            </div>
+            <div class="summary-card fail">
+                <span class="count" id="result-fail">0</span>
+                <span class="label">不合规</span>
+            </div>
+            <div class="summary-card warning">
+                <span class="count" id="result-warning">0</span>
+                <span class="label">警告</span>
+            </div>
+        </div>
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>设备</th>
+                        <th>规则</th>
+                        <th>类别</th>
+                        <th>严重度</th>
+                        <th>状态</th>
+                        <th>问题描述</th>
+                        <th>整改建议</th>
+                    </tr>
+                </thead>
+                <tbody id="results-tbody">
+                    <tr><td colspan="7" class="empty">请选择已完成的任务查看结果</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 添加规则对话框 -->
+<div class="modal-overlay" id="add-rule-modal" style="display: none;">
+    <div class="modal-content modal-large">
+        <div class="modal-header">
+            <h3>添加基线规则</h3>
+            <button class="modal-close" onclick="closeAddRuleModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>规则ID <span class="required">*</span></label>
+                <input type="text" id="rule-id" placeholder="如: BL016">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>规则名称 <span class="required">*</span></label>
+                    <input type="text" id="rule-name" placeholder="规则名称">
+                </div>
+                <div class="form-group">
+                    <label>类别 <span class="required">*</span></label>
+                    <select id="rule-category">
+                        <option value="账户管理">账户管理</option>
+                        <option value="访问控制">访问控制</option>
+                        <option value="日志审计">日志审计</option>
+                        <option value="网络服务">网络服务</option>
+                        <option value="安全加固">安全加固</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>适用厂商</label>
+                    <select id="rule-vendor">
+                        <option value="all">通用</option>
+                        <option value="cisco">Cisco</option>
+                        <option value="huawei">Huawei</option>
+                        <option value="h3c">H3C</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>严重程度</label>
+                    <select id="rule-severity">
+                        <option value="low">低危</option>
+                        <option value="medium" selected>中危</option>
+                        <option value="high">高危</option>
+                        <option value="critical">严重</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>规则描述 <span class="required">*</span></label>
+                <textarea id="rule-description" rows="2" placeholder="规则描述"></textarea>
+            </div>
+            <div class="form-group">
+                <label>检查提示词 <span class="required">*</span></label>
+                <textarea id="rule-prompt" rows="4" placeholder="AI检查提示词，描述如何检查配置"></textarea>
+            </div>
+            <div class="form-group">
+                <label>参考标准</label>
+                <input type="text" id="rule-reference" placeholder="如: 等保2.0-身份鉴别">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeAddRuleModal()">取消</button>
+            <button class="btn btn-primary" onclick="addRule()">添加</button>
+        </div>
+    </div>
+</div>
+
+<!-- 规则详情对话框 -->
+<div class="modal-overlay" id="rule-detail-modal" style="display: none;">
+    <div class="modal-content modal-large">
+        <div class="modal-header">
+            <h3>规则详情</h3>
+            <button class="modal-close" onclick="closeRuleDetailModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="rule-detail-content">
+        </div>
+    </div>
+</div>
+
+<!-- 批量导入设备模态框 -->
+<div class="modal-overlay" id="import-modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>&#128194; 批量导入设备配置</h3>
+            <button class="modal-close" onclick="closeImportModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div style="margin-bottom: 16px;">
+                <p style="color: var(--text-muted); margin-bottom: 12px;">
+                    支持同时上传多个设备配置文件（.txt / .cfg / .conf），系统将自动识别厂商和设备类型。
+                    每个文件对应一台设备的配置。
+                </p>
+                <div style="background: var(--bg-primary); border: 1px dashed var(--border); border-radius: 8px; padding: 30px; text-align: center; cursor: pointer; position: relative;" onclick="document.getElementById('batch-file-input').click()" id="drop-zone">
+                    <input type="file" id="batch-file-input" multiple accept=".txt,.cfg,.conf" style="display:none" onchange="handleBatchFiles(this)">
+                    <div id="drop-zone-content">
+                        <div style="font-size: 32px; margin-bottom: 8px;">&#128194;</div>
+                        <p>点击选择文件或拖拽文件到此处</p>
+                        <p style="font-size: 12px; color: var(--text-muted);">支持 .txt / .cfg / .conf 格式，可多选</p>
+                    </div>
+                </div>
+            </div>
+            <div id="import-file-list" style="display: none;">
+                <h4 style="margin-bottom: 8px;">待导入文件 (<span id="import-file-count">0</span>)</h4>
+                <div id="import-file-items" style="max-height: 250px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px;">
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeImportModal()">取消</button>
+            <button class="btn btn-primary" id="import-submit-btn" onclick="submitBatchImport()" disabled>开始导入</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 颜色变量 */
+    :root {
+        --color-success: #86efac;
+        --color-danger: #fca5a5;
+        --color-warning: #fcd34d;
+    }
+
+    /* 标签页 */
+    .tabs-container {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .tabs-nav {
+        display: flex;
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border);
+    }
+
+    .tab-btn {
+        padding: 12px 24px;
+        background: transparent;
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.2s;
+        border-bottom: 2px solid transparent;
+    }
+
+    .tab-btn:hover {
+        color: var(--text);
+        background: rgba(37, 99, 235, 0.05);
+    }
+
+    .tab-btn.active {
+        color: var(--primary);
+        border-bottom-color: var(--primary);
+        background: rgba(37, 99, 235, 0.1);
+    }
+
+    .tab-content {
+        display: none;
+        padding: 20px;
+    }
+
+    .tab-content.active {
+        display: block;
+    }
+
+    /* 表格包装 */
+    .table-wrapper {
+        max-height: 500px;
+        overflow-y: auto;
+    }
+
+    /* 表单行 */
+    .form-row {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 16px;
+    }
+
+    .form-row .form-group {
+        flex: 1;
+    }
+
+    .form-actions {
+        margin-top: 16px;
+    }
+
+    /* 复选框列表 */
+    .checkbox-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 8px;
+        flex-wrap: wrap;
+    }
+
+    .checkbox-list {
+        max-height: 350px;
+        overflow-y: auto;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 10px;
+        background: var(--bg);
+    }
+
+    .checkbox-item {
+        display: flex;
+        align-items: center;
+        padding: 6px 0;
+    }
+
+    .checkbox-item input[type="checkbox"] {
+        margin-right: 8px;
+    }
+
+    .checkbox-item label {
+        margin: 0;
+        font-size: 13px;
+        cursor: pointer;
+    }
+
+    .text-muted {
+        color: var(--text-muted);
+        font-size: 13px;
+    }
+
+    /* 任务表单 */
+    .task-form {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    /* 结果摘要 */
+    .result-summary {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 16px;
+    }
+
+    .summary-card {
+        flex: 1;
+        text-align: center;
+        padding: 16px;
+        border-radius: 8px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+    }
+
+    .summary-card.pass {
+        border-left: 4px solid var(--color-success);
+    }
+
+    .summary-card.fail {
+        border-left: 4px solid var(--color-danger);
+    }
+
+    .summary-card.warning {
+        border-left: 4px solid var(--color-warning);
+    }
+
+    .summary-card .count {
+        font-size: 32px;
+        font-weight: bold;
+        display: block;
+    }
+
+    .summary-card.pass .count { color: var(--color-success); }
+    .summary-card.fail .count { color: var(--color-danger); }
+    .summary-card.warning .count { color: var(--color-warning); }
+
+    .summary-card .label {
+        font-size: 13px;
+        color: var(--text-muted);
+    }
+
+    /* 状态标签 */
+    .status-enabled {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        background: rgba(134, 239, 172, 0.2);
+        color: var(--color-success);
+    }
+
+    .status-disabled {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        background: rgba(252, 165, 165, 0.2);
+        color: var(--color-danger);
+    }
+
+    .status-pending {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        background: rgba(148, 163, 184, 0.2);
+        color: #94a3b8;
+    }
+
+    .status-running {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        background: rgba(96, 165, 250, 0.2);
+        color: #60a5fa;
+    }
+
+    .status-completed {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        background: rgba(134, 239, 172, 0.2);
+        color: var(--color-success);
+    }
+
+    .status-failed {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        background: rgba(252, 165, 165, 0.2);
+        color: var(--color-danger);
+    }
+
+    .status-pass {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        background: rgba(134, 239, 172, 0.2);
+        color: var(--color-success);
+    }
+
+    .status-warning {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        background: rgba(252, 211, 77, 0.2);
+        color: var(--color-warning);
+    }
+
+    /* 严重度标签 */
+    .sev-critical { color: #fca5a5; font-weight: bold; }
+    .sev-high { color: #fca5a5; font-weight: bold; }
+    .sev-medium { color: #fcd34d; }
+    .sev-low { color: #86efac; }
+
+    /* 进度条 */
+    .progress-container {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .progress-bar {
+        flex: 1;
+        height: 6px;
+        background: var(--border);
+        border-radius: 3px;
+        overflow: hidden;
+    }
+
+    .progress-fill {
+        height: 100%;
+        background: var(--primary);
+        border-radius: 3px;
+        transition: width 0.3s ease;
+    }
+
+    .progress-text {
+        font-size: 12px;
+        color: var(--text-muted);
+        min-width: 40px;
+    }
+
+    /* 模态框 */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        min-width: 400px;
+        max-width: 90vw;
+    }
+
+    .modal-large {
+        width: 700px;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .modal-header h3 {
+        margin: 0;
+        font-size: 16px;
+    }
+
+    .modal-close {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        font-size: 24px;
+        cursor: pointer;
+        padding: 0;
+        line-height: 1;
+    }
+
+    .modal-close:hover {
+        color: var(--text);
+    }
+
+    .modal-body {
+        padding: 20px;
+        max-height: 60vh;
+        overflow-y: auto;
+    }
+
+    .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 16px 20px;
+        border-top: 1px solid var(--border);
+    }
+
+    /* 文本域 */
+    textarea {
+        width: 100%;
+        padding: 10px 12px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text);
+        font-size: 14px;
+        resize: vertical;
+    }
+
+    textarea:focus {
+        outline: none;
+        border-color: var(--primary);
+    }
+
+    /* 必填标记 */
+    .required {
+        color: var(--color-danger);
+    }
+
+    /* 操作按钮组 */
+    .action-btns {
+        display: flex;
+        gap: 5px;
+    }
+
+    .action-btns .btn {
+        padding: 4px 8px;
+        font-size: 12px;
+    }
+
+    /* 详情单元格 */
+    .detail-cell {
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .detail-cell:hover {
+        white-space: normal;
+        word-break: break-all;
+    }
+
+    /* 厂商标签 */
+    .vendor-tag {
+        display: inline-block;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 11px;
+        background: rgba(96, 165, 250, 0.2);
+        color: #60a5fa;
+    }
+
+    .vendor-tag.cisco { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+    .vendor-tag.huawei { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+    .vendor-tag.h3c { background: rgba(168, 85, 247, 0.2); color: #a855f7; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 数据缓存
+    let allDevices = [];
+    let allRules = [];
+    let allTasks = [];
+    let currentTaskId = null;
+    let pollInterval = null;
+
+    // 初始化
+    document.addEventListener('DOMContentLoaded', function() {
+        loadStats();
+        loadDevices();
+        loadRules();
+        loadTasks();
+
+        // 标签页切换
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const tabId = this.dataset.tab;
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                this.classList.add('active');
+                document.getElementById('tab-' + tabId).classList.add('active');
+            });
+        });
+    });
+
+    // 加载统计信息
+    function loadStats() {
+        fetch('/ntconfig/api/stats')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    document.getElementById('stat-rules').textContent = data.data.rules_count;
+                    document.getElementById('stat-devices').textContent = data.data.devices_count;
+                    document.getElementById('stat-tasks').textContent = data.data.tasks_count;
+                    document.getElementById('stat-completed').textContent = data.data.completed_tasks;
+                }
+            });
+    }
+
+    // ==================== 设备管理 ====================
+
+    function loadDevices() {
+        fetch('/ntconfig/api/devices')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    allDevices = data.data;
+                    renderDevices();
+                    updateDeviceCheckboxes();
+                }
+            });
+    }
+
+    function renderDevices() {
+        const tbody = document.getElementById('devices-tbody');
+        if (allDevices.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无设备配置，请上传配置文件</td></tr>';
+            return;
+        }
+
+        const vendorMap = { cisco: 'Cisco', huawei: 'Huawei', h3c: 'H3C', juniper: 'Juniper', other: '其他' };
+        const typeMap = { router: '路由器', switch: '交换机', firewall: '防火墙', other: '其他' };
+
+        tbody.innerHTML = allDevices.map(d => `
+            <tr>
+                <td>${escapeHtml(d.filename)}</td>
+                <td>${escapeHtml(d.hostname || '-')}</td>
+                <td>${escapeHtml(d.ip_address || '<span style="color:var(--text-muted)">未设置</span>')}</td>
+                <td>${escapeHtml(d.username || '<span style="color:var(--text-muted)">未设置</span>')}</td>
+                <td><span class="vendor-tag ${d.vendor}">${vendorMap[d.vendor] || d.vendor}</span></td>
+                <td>${typeMap[d.device_type] || d.device_type}</td>
+                <td>${formatTime(d.uploaded_at)}</td>
+                <td>
+                    <button class="btn btn-sm btn-danger" onclick="deleteDevice('${d.id}')">删除</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    // ==================== 模板下载 ====================
+    function downloadTemplate(vendor) {
+        const templates = {
+            cisco: `! ============================================================
+! Cisco IOS 设备配置模板
+! 将此文件内容替换为实际设备配置后上传
+! 支持 show running-config 的输出内容
+! ============================================================
+!
+hostname CoreSwitch-01
+!
+version 15.2
+!
+enable secret 5 $1$xxxx$xxxxxxxxxxxxxxxxxx
+!
+no ip domain-lookup
+ip domain-name example.com
+!
+interface GigabitEthernet0/0
+ description Uplink-to-WAN
+ ip address 192.168.1.1 255.255.255.0
+ no shutdown
+!
+interface GigabitEthernet0/1
+ description Downlink-to-LAN
+ ip address 10.0.0.1 255.255.255.0
+ no shutdown
+!
+line vty 0 4
+ transport input ssh
+ login local
+!
+end
+`,
+            huawei: `#
+# ============================================================
+# 华为 VRP 设备配置模板
+# 将此文件内容替换为实际设备配置后上传
+# 支持 display current-configuration 的输出内容
+# ============================================================
+#
+sysname CoreSwitch-01
+#
+vlan batch 10 20 30
+#
+interface GigabitEthernet0/0/1
+ description To-WAN
+ port link-mode route
+ ip address 192.168.1.1 255.255.255.0
+#
+interface GigabitEthernet0/0/2
+ description To-LAN
+ port link-mode bridge
+ port access vlan 10
+#
+ssh server enable
+stelnet server enable
+#
+aaa
+ local-user admin password irreversible-cipher $1c$xxxx$xxxxxxxxxxxxxxxxxx
+ local-user admin service-type ssh telnet terminal
+ local-user admin level 15
+#
+return
+`,
+            h3c: `#
+# ============================================================
+# H3C Comware 设备配置模板
+# 将此文件内容替换为实际设备配置后上传
+# 支持 display current-configuration 的输出内容
+# ============================================================
+#
+sysname CoreSwitch-01
+#
+vlan 10
+ name Management
+vlan 20
+ name Office
+#
+interface GigabitEthernet1/0/1
+ description To-WAN
+ port link-mode route
+ ip address 192.168.1.1 255.255.255.0
+#
+interface GigabitEthernet1/0/2
+ description To-LAN
+ port link-mode bridge
+ port access vlan 20
+#
+ssh server enable
+#
+local-user admin class manage
+ password hash $h$6$xxxx$xxxxxxxxxxxxxxxxxx
+ service-type ssh telnet
+ authorization-attribute user-role network-admin
+#
+return
+`
+        };
+
+        const content = templates[vendor] || templates.cisco;
+        const vendorNames = { cisco: 'Cisco_IOS', huawei: 'Huawei_VRP', h3c: 'H3C_Comware' };
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'template_' + (vendorNames[vendor] || vendor) + '.cfg';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    // ==================== 批量导入 ====================
+    let _batchFiles = [];
+
+    function openImportModal() {
+        _batchFiles = [];
+        document.getElementById('batch-file-input').value = '';
+        document.getElementById('import-file-list').style.display = 'none';
+        document.getElementById('import-file-items').innerHTML = '';
+        document.getElementById('import-submit-btn').disabled = true;
+        document.getElementById('import-modal').style.display = 'flex';
+    }
+
+    function closeImportModal() {
+        document.getElementById('import-modal').style.display = 'none';
+        _batchFiles = [];
+    }
+
+    function handleBatchFiles(input) {
+        if (!input.files || input.files.length === 0) return;
+        _batchFiles = Array.from(input.files);
+        renderFileList();
+    }
+
+    function renderFileList() {
+        const container = document.getElementById('import-file-items');
+        const listSection = document.getElementById('import-file-list');
+        const countEl = document.getElementById('import-file-count');
+        const submitBtn = document.getElementById('import-submit-btn');
+
+        if (_batchFiles.length === 0) {
+            listSection.style.display = 'none';
+            submitBtn.disabled = true;
+            return;
+        }
+
+        listSection.style.display = 'block';
+        countEl.textContent = _batchFiles.length;
+        submitBtn.disabled = false;
+
+        container.innerHTML = _batchFiles.map((f, i) => {
+            const size = f.size < 1024 ? f.size + ' B' : (f.size / 1024).toFixed(1) + ' KB';
+            return '<div style="padding:10px 12px;border-bottom:1px solid var(--border);">' +
+                '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">' +
+                '<div><span style="margin-right:8px;">&#128196;</span>' + escapeHtml(f.name) +
+                '<span style="color:var(--text-muted);font-size:12px;margin-left:8px;">' + size + '</span></div>' +
+                '<button class="btn btn-sm" onclick="removeBatchFile(' + i + ')" style="color:var(--danger);">移除</button></div>' +
+                '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding-left:24px;">' +
+                '<input type="text" class="batch-input" data-index="' + i + '" data-field="ip_address" placeholder="设备地址 (如 192.168.1.1)" style="padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px;">' +
+                '<input type="text" class="batch-input" data-index="' + i + '" data-field="username" placeholder="SSH用户名" style="padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px;">' +
+                '<input type="password" class="batch-input" data-index="' + i + '" data-field="password" placeholder="SSH密码" style="padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px;">' +
+                '</div></div>';
+        }).join('');
+    }
+
+    function removeBatchFile(index) {
+        _batchFiles.splice(index, 1);
+        renderFileList();
+    }
+
+    async function submitBatchImport() {
+        if (_batchFiles.length === 0) return;
+
+        const submitBtn = document.getElementById('import-submit-btn');
+        submitBtn.disabled = true;
+        submitBtn.textContent = '导入中...';
+
+        // 收集每个文件的连接信息
+        const connInfo = {};
+        document.querySelectorAll('.batch-input').forEach(input => {
+            const idx = input.dataset.index;
+            const field = input.dataset.field;
+            if (!connInfo[idx]) connInfo[idx] = {};
+            connInfo[idx][field] = input.value.trim();
+        });
+
+        let success = 0, failed = 0, errors = [];
+
+        for (let i = 0; i < _batchFiles.length; i++) {
+            const file = _batchFiles[i];
+            const info = connInfo[String(i)] || {};
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                if (info.ip_address) formData.append('ip_address', info.ip_address);
+                if (info.username) formData.append('username', info.username);
+                if (info.password) formData.append('password', info.password);
+                const resp = await fetch('/ntconfig/api/devices/upload', { method: 'POST', body: formData });
+                const result = await resp.json();
+                if (result.status === 'ok') {
+                    success++;
+                } else {
+                    failed++;
+                    errors.push(file.name + ': ' + (result.message || '未知错误'));
+                }
+            } catch (e) {
+                failed++;
+                errors.push(file.name + ': 网络错误');
+            }
+        }
+
+        submitBtn.disabled = false;
+        submitBtn.textContent = '开始导入';
+        closeImportModal();
+
+        // 刷新设备列表
+        loadDevices();
+
+        // 显示结果
+        let msg = '导入完成: 成功 ' + success + ' 个';
+        if (failed > 0) {
+            msg += '，失败 ' + failed + ' 个';
+            if (errors.length > 0) {
+                msg += '\\n\\n失败详情:\\n' + errors.slice(0, 5).join('\\n');
+                if (errors.length > 5) msg += '\\n...及其他 ' + (errors.length - 5) + ' 个';
+            }
+        }
+        alert(msg);
+    }
+
+    // 拖拽上传支持
+    (function() {
+        const dropZone = document.getElementById('drop-zone');
+        if (!dropZone) return;
+        ['dragenter', 'dragover'].forEach(evt => {
+            dropZone.addEventListener(evt, function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.style.borderColor = 'var(--primary)';
+                dropZone.style.background = 'rgba(59,130,246,0.05)';
+            });
+        });
+        ['dragleave', 'drop'].forEach(evt => {
+            dropZone.addEventListener(evt, function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.style.borderColor = 'var(--border)';
+                dropZone.style.background = 'var(--bg-primary)';
+            });
+        });
+        dropZone.addEventListener('drop', function(e) {
+            const files = e.dataTransfer.files;
+            if (files && files.length > 0) {
+                _batchFiles = Array.from(files).filter(f => {
+                    const ext = f.name.split('.').pop().toLowerCase();
+                    return ['txt', 'cfg', 'conf'].includes(ext);
+                });
+                renderFileList();
+            }
+        });
+    })();
+
+    function uploadDeviceConfig(input) {
+        if (!input.files || !input.files[0]) return;
+
+        const file = input.files[0];
+        const formData = new FormData();
+        formData.append('file', file);
+
+        fetch('/ntconfig/api/devices/upload', {
+            method: 'POST',
+            body: formData
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                alert('上传成功: ' + data.data.hostname);
+                loadDevices();
+                loadStats();
+            } else {
+                alert('上传失败: ' + data.message);
+            }
+        })
+        .catch(e => alert('上传失败: ' + e.message));
+
+        input.value = '';
+    }
+
+    function deleteDevice(deviceId) {
+        if (!confirm('确定删除该设备配置？')) return;
+
+        fetch('/ntconfig/api/devices/' + deviceId, { method: 'DELETE' })
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    loadDevices();
+                    loadStats();
+                } else {
+                    alert('删除失败: ' + data.message);
+                }
+            });
+    }
+
+    // ==================== 规则管理 ====================
+
+    function loadRules() {
+        const category = document.getElementById('filter-rule-category').value;
+        const vendor = document.getElementById('filter-rule-vendor').value;
+
+        let url = '/ntconfig/api/rules';
+        const params = [];
+        if (category) params.push('category=' + encodeURIComponent(category));
+        if (vendor) params.push('vendor=' + encodeURIComponent(vendor));
+        if (params.length) url += '?' + params.join('&');
+
+        fetch(url)
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    allRules = data.data;
+                    renderRules();
+                    updateRuleCheckboxes();
+                }
+            });
+    }
+
+    function renderRules() {
+        const tbody = document.getElementById('rules-tbody');
+        if (allRules.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无规则</td></tr>';
+            return;
+        }
+
+        const severityMap = { critical: '严重', high: '高危', medium: '中危', low: '低危' };
+
+        tbody.innerHTML = allRules.map(r => `
+            <tr>
+                <td><code>${r.id}</code></td>
+                <td><a href="javascript:void(0)" onclick="showRuleDetail('${r.id}')">${escapeHtml(r.name)}</a></td>
+                <td>${r.category}</td>
+                <td>${r.vendor === 'all' ? '通用' : r.vendor.toUpperCase()}</td>
+                <td class="sev-${r.severity}">${severityMap[r.severity] || r.severity}</td>
+                <td><span class="status-${r.enabled ? 'enabled' : 'disabled'}">${r.enabled ? '启用' : '禁用'}</span></td>
+                <td>
+                    <div class="action-btns">
+                        <button class="btn btn-sm btn-secondary" onclick="toggleRule('${r.id}', ${!r.enabled})">
+                            ${r.enabled ? '禁用' : '启用'}
+                        </button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteRule('${r.id}')">删除</button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function showAddRuleModal() {
+        document.getElementById('add-rule-modal').style.display = 'flex';
+    }
+
+    function closeAddRuleModal() {
+        document.getElementById('add-rule-modal').style.display = 'none';
+    }
+
+    function addRule() {
+        const data = {
+            id: document.getElementById('rule-id').value.trim(),
+            name: document.getElementById('rule-name').value.trim(),
+            category: document.getElementById('rule-category').value,
+            description: document.getElementById('rule-description').value.trim(),
+            check_prompt: document.getElementById('rule-prompt').value.trim(),
+            vendor: document.getElementById('rule-vendor').value,
+            severity: document.getElementById('rule-severity').value,
+            reference: document.getElementById('rule-reference').value.trim(),
+        };
+
+        if (!data.id || !data.name || !data.category || !data.description || !data.check_prompt) {
+            alert('请填写所有必填字段');
+            return;
+        }
+
+        fetch('/ntconfig/api/rules', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(result => {
+            if (result.status === 'ok') {
+                alert('规则添加成功');
+                closeAddRuleModal();
+                loadRules();
+                loadStats();
+            } else {
+                alert('添加失败: ' + result.message);
+            }
+        });
+    }
+
+    function toggleRule(ruleId, enabled) {
+        fetch('/ntconfig/api/rules/' + ruleId + '/toggle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: enabled })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                loadRules();
+            } else {
+                alert('操作失败: ' + data.message);
+            }
+        });
+    }
+
+    function deleteRule(ruleId) {
+        if (!confirm('确定删除该规则？内置规则无法删除。')) return;
+
+        fetch('/ntconfig/api/rules/' + ruleId, { method: 'DELETE' })
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    loadRules();
+                    loadStats();
+                } else {
+                    alert('删除失败: ' + data.message);
+                }
+            });
+    }
+
+    function showRuleDetail(ruleId) {
+        const rule = allRules.find(r => r.id === ruleId);
+        if (!rule) return;
+
+        const content = `
+            <div class="info-grid">
+                <div class="info-item"><span class="label">ID</span><span class="value">${rule.id}</span></div>
+                <div class="info-item"><span class="label">名称</span><span class="value">${escapeHtml(rule.name)}</span></div>
+                <div class="info-item"><span class="label">类别</span><span class="value">${rule.category}</span></div>
+                <div class="info-item"><span class="label">厂商</span><span class="value">${rule.vendor === 'all' ? '通用' : rule.vendor}</span></div>
+                <div class="info-item"><span class="label">严重度</span><span class="value">${rule.severity}</span></div>
+                <div class="info-item"><span class="label">参考标准</span><span class="value">${rule.reference || '-'}</span></div>
+            </div>
+            <div class="form-group" style="margin-top: 16px;">
+                <label>描述</label>
+                <p style="color: var(--text);">${escapeHtml(rule.description)}</p>
+            </div>
+            <div class="form-group">
+                <label>检查提示词</label>
+                <pre style="background: var(--bg); padding: 12px; border-radius: 6px; white-space: pre-wrap; font-size: 13px;">${escapeHtml(rule.check_prompt)}</pre>
+            </div>
+        `;
+
+        document.getElementById('rule-detail-content').innerHTML = content;
+        document.getElementById('rule-detail-modal').style.display = 'flex';
+    }
+
+    function closeRuleDetailModal() {
+        document.getElementById('rule-detail-modal').style.display = 'none';
+    }
+
+    // ==================== 任务管理 ====================
+
+    function updateDeviceCheckboxes() {
+        const container = document.getElementById('task-devices');
+        if (allDevices.length === 0) {
+            container.innerHTML = '<p class="text-muted">请先上传设备配置</p>';
+            return;
+        }
+
+        container.innerHTML = allDevices.map(d => `
+            <div class="checkbox-item">
+                <input type="checkbox" id="dev-${d.id}" value="${d.id}" onchange="updateSelectCount('task-devices', 'device-select-count')">
+                <label for="dev-${d.id}">${escapeHtml(d.hostname)} <span style="color:var(--text-muted);font-size:12px;">(${d.vendor})</span></label>
+            </div>
+        `).join('');
+        updateSelectCount('task-devices', 'device-select-count');
+    }
+
+    function updateRuleCheckboxes() {
+        const container = document.getElementById('task-rules');
+        const enabledRules = allRules.filter(r => r.enabled);
+
+        if (enabledRules.length === 0) {
+            container.innerHTML = '<p class="text-muted">暂无启用的规则</p>';
+            return;
+        }
+
+        const severityColors = { critical: '#ef4444', high: '#f97316', medium: '#eab308', low: '#22c55e' };
+
+        container.innerHTML = enabledRules.map(r => `
+            <div class="checkbox-item" data-rule-text="${escapeHtml(r.id + ' ' + r.name + ' ' + r.category + ' ' + r.vendor).toLowerCase()}">
+                <input type="checkbox" id="rule-${r.id}" value="${r.id}" onchange="updateSelectCount('task-rules', 'rule-select-count')">
+                <label for="rule-${r.id}">
+                    <span style="color:${severityColors[r.severity] || 'var(--text-muted)'};font-weight:600;font-size:11px;margin-right:4px;">${r.severity.toUpperCase()}</span>
+                    [${r.id}] ${escapeHtml(r.name)}
+                    <span style="color:var(--text-muted);font-size:11px;margin-left:6px;">${r.category} | ${r.vendor === 'all' ? '通用' : r.vendor}</span>
+                </label>
+            </div>
+        `).join('');
+        updateSelectCount('task-rules', 'rule-select-count');
+    }
+
+    // 全选/取消全选
+    function toggleAllCheckboxes(containerId, checked) {
+        const container = document.getElementById(containerId);
+        container.querySelectorAll('.checkbox-item').forEach(item => {
+            const cb = item.querySelector('input[type="checkbox"]');
+            if (cb) {
+                cb.checked = checked;
+                // 触发 onchange 更新计数
+                cb.dispatchEvent(new Event('change'));
+            }
+        });
+    }
+
+    // 更新选中计数
+    function updateSelectCount(containerId, countId) {
+        const container = document.getElementById(containerId);
+        const countEl = document.getElementById(countId);
+        if (!countEl) return;
+        const total = container.querySelectorAll('input[type="checkbox"]').length;
+        const checked = container.querySelectorAll('input[type="checkbox"]:checked').length;
+        countEl.textContent = checked > 0 ? '已选 ' + checked + '/' + total : '';
+    }
+
+    // 搜索过滤规则
+    function filterRuleCheckboxes() {
+        const keyword = document.getElementById('rule-search').value.toLowerCase().trim();
+        const container = document.getElementById('task-rules');
+        container.querySelectorAll('.checkbox-item').forEach(item => {
+            const text = item.getAttribute('data-rule-text') || '';
+            item.style.display = (!keyword || text.includes(keyword)) ? '' : 'none';
+        });
+    }
+
+    function createTask() {
+        const name = document.getElementById('task-name').value.trim();
+        if (!name) {
+            alert('请输入任务名称');
+            return;
+        }
+
+        const deviceIds = [];
+        document.querySelectorAll('#task-devices input:checked').forEach(cb => {
+            deviceIds.push(cb.value);
+        });
+
+        const ruleIds = [];
+        document.querySelectorAll('#task-rules input:checked').forEach(cb => {
+            ruleIds.push(cb.value);
+        });
+
+        if (deviceIds.length === 0) {
+            alert('请选择至少一个设备');
+            return;
+        }
+
+        if (ruleIds.length === 0) {
+            alert('请选择至少一条规则');
+            return;
+        }
+
+        fetch('/ntconfig/api/tasks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, device_ids: deviceIds, rule_ids: ruleIds })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                alert('任务创建成功');
+                document.getElementById('task-name').value = '';
+                document.querySelectorAll('#task-devices input, #task-rules input').forEach(cb => cb.checked = false);
+                loadTasks();
+                loadStats();
+            } else {
+                alert('创建失败: ' + data.message);
+            }
+        });
+    }
+
+    function loadTasks() {
+        fetch('/ntconfig/api/tasks')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    allTasks = data.data;
+                    renderTasks();
+                    updateTaskSelect();
+                }
+            });
+    }
+
+    function renderTasks() {
+        const tbody = document.getElementById('tasks-tbody');
+        if (allTasks.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无检查任务</td></tr>';
+            return;
+        }
+
+        const statusMap = { pending: '待执行', running: '执行中', completed: '已完成', failed: '失败' };
+
+        tbody.innerHTML = allTasks.map(t => `
+            <tr>
+                <td>${escapeHtml(t.name)}</td>
+                <td><span class="status-${t.status}">${statusMap[t.status] || t.status}</span></td>
+                <td>
+                    <div class="progress-container">
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${t.progress}%"></div>
+                        </div>
+                        <span class="progress-text">${t.progress}%</span>
+                    </div>
+                </td>
+                <td>${formatTime(t.created_at)}</td>
+                <td>
+                    <div class="action-btns">
+                        ${t.status === 'pending' ? `<button class="btn btn-sm btn-primary" onclick="startTask('${t.id}')">启动</button>` : ''}
+                        ${t.status === 'running' ? `<button class="btn btn-sm btn-danger" onclick="stopTask('${t.id}')">停止</button>` : ''}
+                        ${t.status === 'completed' ? `<button class="btn btn-sm btn-secondary" onclick="viewResults('${t.id}')">查看结果</button>` : ''}
+                        <button class="btn btn-sm btn-danger" onclick="deleteTask('${t.id}')">删除</button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function startTask(taskId) {
+        fetch('/ntconfig/api/tasks/' + taskId + '/start', { method: 'POST' })
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    alert('任务已启动');
+                    loadTasks();
+                    startPolling(taskId);
+                } else {
+                    alert('启动失败: ' + data.message);
+                }
+            });
+    }
+
+    function stopTask(taskId) {
+        fetch('/ntconfig/api/tasks/' + taskId + '/stop', { method: 'POST' })
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    alert('任务已停止');
+                    stopPolling();
+                    loadTasks();
+                } else {
+                    alert('停止失败: ' + data.message);
+                }
+            });
+    }
+
+    function deleteTask(taskId) {
+        if (!confirm('确定删除该任务？')) return;
+
+        fetch('/ntconfig/api/tasks/' + taskId, { method: 'DELETE' })
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    loadTasks();
+                    loadStats();
+                } else {
+                    alert('删除失败: ' + data.message);
+                }
+            });
+    }
+
+    function startPolling(taskId) {
+        if (pollInterval) clearInterval(pollInterval);
+
+        pollInterval = setInterval(() => {
+            fetch('/ntconfig/api/tasks/' + taskId)
+                .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+                .then(data => {
+                    if (data.status === 'ok') {
+                        const task = data.data;
+                        if (task.status !== 'running') {
+                            stopPolling();
+                            loadTasks();
+                            loadStats();
+                        } else {
+                            loadTasks();
+                        }
+                    }
+                });
+        }, 2000);
+    }
+
+    function stopPolling() {
+        if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+        }
+    }
+
+    // ==================== 检查结果 ====================
+
+    function updateTaskSelect() {
+        const select = document.getElementById('result-task-select');
+        const completedTasks = allTasks.filter(t => t.status === 'completed');
+
+        select.innerHTML = '<option value="">选择任务</option>' +
+            completedTasks.map(t => `<option value="${t.id}">${escapeHtml(t.name)} (${formatTime(t.completed_at)})</option>`).join('');
+    }
+
+    function viewResults(taskId) {
+        // 切换到结果标签页
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        document.querySelector('[data-tab="results"]').classList.add('active');
+        document.getElementById('tab-results').classList.add('active');
+
+        // 设置选择框
+        document.getElementById('result-task-select').value = taskId;
+        loadTaskResults();
+    }
+
+    function loadTaskResults() {
+        const taskId = document.getElementById('result-task-select').value;
+        currentTaskId = taskId;
+
+        const btnHtml = document.getElementById('btn-export-html');
+        const btnJson = document.getElementById('btn-export-json');
+
+        if (!taskId) {
+            document.getElementById('result-summary').style.display = 'none';
+            document.getElementById('results-tbody').innerHTML = '<tr><td colspan="7" class="empty">请选择已完成的任务查看结果</td></tr>';
+            btnHtml.disabled = true;
+            btnJson.disabled = true;
+            return;
+        }
+
+        btnHtml.disabled = false;
+        btnJson.disabled = false;
+
+        fetch('/ntconfig/api/tasks/' + taskId)
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const results = data.data.results || [];
+
+                    // 统计
+                    const passCount = results.filter(r => r.status === 'pass').length;
+                    const failCount = results.filter(r => r.status === 'fail').length;
+                    const warningCount = results.filter(r => r.status === 'warning').length;
+
+                    document.getElementById('result-pass').textContent = passCount;
+                    document.getElementById('result-fail').textContent = failCount;
+                    document.getElementById('result-warning').textContent = warningCount;
+                    document.getElementById('result-summary').style.display = 'flex';
+
+                    // 渲染结果
+                    renderResults(results);
+                }
+            });
+    }
+
+    function renderResults(results) {
+        const tbody = document.getElementById('results-tbody');
+
+        if (!results || results.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无检查结果</td></tr>';
+            return;
+        }
+
+        const severityMap = { critical: '严重', high: '高危', medium: '中危', low: '低危' };
+
+        tbody.innerHTML = results.map(r => `
+            <tr>
+                <td>${escapeHtml(r.device_name)}</td>
+                <td>${escapeHtml(r.rule_name)}</td>
+                <td>${r.category}</td>
+                <td class="sev-${r.severity}">${severityMap[r.severity] || r.severity}</td>
+                <td><span class="status-${r.status}">${r.status === 'pass' ? '通过' : r.status === 'fail' ? '不合规' : '警告'}</span></td>
+                <td class="detail-cell" title="${escapeHtml(r.finding)}">${escapeHtml(r.finding) || '-'}</td>
+                <td class="detail-cell" title="${escapeHtml(r.recommendation)}">${escapeHtml(r.recommendation) || '-'}</td>
+            </tr>
+        `).join('');
+    }
+
+    function exportReport(format) {
+        if (!currentTaskId) return;
+        window.location.href = '/ntconfig/api/tasks/' + currentTaskId + '/report?format=' + format;
+    }
+
+    // ==================== 辅助函数 ====================
+
+    function formatTime(isoString) {
+        if (!isoString) return '-';
+        const date = new Date(isoString);
+        return date.toLocaleString('zh-CN');
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // 点击模态框外部关闭
+    document.querySelectorAll('.modal-overlay').forEach(modal => {
+        modal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                this.style.display = 'none';
+            }
+        });
+    });
+</script>
+{% endblock %}

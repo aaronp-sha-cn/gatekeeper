@@ -1,0 +1,1257 @@
+{% extends "base.html" %}
+
+{% block title %}仪表盘{% endblock %}
+
+{% block content %}
+<div class="dashboard-page">
+    <!-- 系统监控卡片 - 仪表盘样式 -->
+    <div class="monitor-grid">
+        <div class="monitor-card gauge-card" id="mc-cpu" style="--card-accent: #e5b800;">
+            <div class="monitor-header">
+                <span class="monitor-label" style="color: #e5b800;">CPU 利用率</span>
+                <span class="monitor-badge" id="cpu-badge">正常</span>
+            </div>
+            <div class="gauge-container">
+                <canvas id="cpu-gauge" width="200" height="130"></canvas>
+                <div class="gauge-value" id="cpu-gauge-value">0%</div>
+            </div>
+            <div class="monitor-detail">
+                <span id="cpu-cores">-</span> 核心 · 负载 <span id="cpu-load">0</span>
+            </div>
+        </div>
+
+        <div class="monitor-card gauge-card" id="mc-mem" style="--card-accent: #52c41a;">
+            <div class="monitor-header">
+                <span class="monitor-label" style="color: #52c41a;">内存利用率</span>
+                <span class="monitor-badge" id="mem-badge">正常</span>
+            </div>
+            <div class="gauge-container">
+                <canvas id="mem-gauge" width="200" height="130"></canvas>
+                <div class="gauge-value" id="mem-gauge-value">0%</div>
+            </div>
+            <div class="monitor-detail">
+                已用 <span id="mem-used">-</span> / 总计 <span id="mem-total">-</span>
+            </div>
+        </div>
+
+        <div class="monitor-card gauge-card" id="mc-disk" style="--card-accent: #eb2f96;">
+            <div class="monitor-header">
+                <span class="monitor-label" style="color: #eb2f96;">磁盘占用</span>
+                <span class="monitor-badge" id="disk-badge">正常</span>
+            </div>
+            <div class="gauge-container">
+                <canvas id="disk-gauge" width="200" height="130"></canvas>
+                <div class="gauge-value" id="disk-gauge-value">0%</div>
+            </div>
+            <div class="monitor-detail">
+                已用 <span id="disk-used">-</span> / 总计 <span id="disk-total">-</span>
+            </div>
+        </div>
+
+        <div class="monitor-card gauge-card" id="mc-conn" style="--card-accent: #13c2c2;">
+            <div class="monitor-header">
+                <span class="monitor-label" style="color: #13c2c2;">总并发比</span>
+                <span class="monitor-badge" id="conn-badge">正常</span>
+            </div>
+            <div class="gauge-container">
+                <canvas id="conn-gauge" width="200" height="130"></canvas>
+                <div class="gauge-value" id="conn-gauge-value">0%</div>
+                <div class="gauge-fraction" id="conn-fraction"></div>
+            </div>
+            <div class="monitor-detail">
+                <div class="conn-mini-stats">
+                    <span>ESTABLISHED: <strong id="conn-est">0</strong></span>
+                    <span>TIME_WAIT: <strong id="conn-tw">0</strong></span>
+                    <span>CLOSE_WAIT: <strong id="conn-cw">0</strong></span>
+                    <span>LISTEN: <strong id="conn-listen">0</strong></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 统计卡片 -->
+    <div class="stats-grid">
+        <div class="stat-card critical">
+            <div class="stat-icon">!</div>
+            <div class="stat-info">
+                <h3 id="critical-alerts">0</h3>
+                <p>严重告警</p>
+            </div>
+        </div>
+        <div class="stat-card warning">
+            <div class="stat-icon">~</div>
+            <div class="stat-info">
+                <h3 id="new-alerts">0</h3>
+                <p>新告警</p>
+            </div>
+        </div>
+        <div class="stat-card info">
+            <div class="stat-icon">#</div>
+            <div class="stat-info">
+                <h3 id="traffic-packets">0</h3>
+                <p>流量包/小时</p>
+            </div>
+        </div>
+        <div class="stat-card success">
+            <div class="stat-icon">*</div>
+            <div class="stat-info">
+                <h3 id="open-vulns">0</h3>
+                <p>未修复漏洞</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 图表区域 - 流量趋势 + 威胁类型分布 -->
+    <div class="charts-row">
+        <div class="chart-card">
+            <h3>流量趋势</h3>
+            <canvas id="traffic-chart" height="120"></canvas>
+        </div>
+        <div class="chart-card">
+            <h3>威胁类型分布</h3>
+            <canvas id="threat-chart" height="120"></canvas>
+        </div>
+    </div>
+
+    <!-- 世界地图 -->
+    <div class="charts-row">
+        <div class="chart-card" style="grid-column: span 2;">
+            <div class="section-header">
+                <h3>网络连接地理分布（全球）</h3>
+                <div class="map-legend">
+                    <span class="legend-item"><i class="dot dot-threat"></i> 威胁IP</span>
+                    <span class="legend-item"><i class="dot dot-normal"></i> 正常IP</span>
+                    <span class="legend-item"><i class="dot dot-china"></i> 中国</span>
+                    <span class="legend-item"><i class="dot dot-other"></i> 其他国家</span>
+                </div>
+            </div>
+            <div id="world-map" style="width: 100%; height: 480px; background: rgba(0,0,0,0.2); border-radius: 8px; position: relative;">
+                <div id="map-loading" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--text-muted); text-align: center;">
+                    <div class="map-spinner"></div>
+                    <p style="margin-top: 12px;">地图加载中...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- IP归属地表 -->
+    <div class="section">
+        <div class="section-header">
+            <h3>IP 归属地分布</h3>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <span id="ip-geo-count" class="text-muted" style="font-size: 12px;"></span>
+                <button onclick="loadIpGeoData()" class="btn btn-sm">
+                    <span class="btn-icon">&#8635;</span> 刷新
+                </button>
+            </div>
+        </div>
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>IP 地址</th>
+                        <th>国家</th>
+                        <th>省份/地区</th>
+                        <th>城市</th>
+                        <th>运营商</th>
+                        <th>连接数</th>
+                        <th>异常</th>
+                        <th>状态</th>
+                    </tr>
+                </thead>
+                <tbody id="ip-geo-body">
+                    <tr><td colspan="8" class="empty">加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 最近告警 -->
+    <div class="recent-alerts">
+        <div class="card-header">
+            <h3>最近告警</h3>
+            <a href="/alerts/" class="view-all">查看全部</a>
+        </div>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>级别</th>
+                    <th>标题</th>
+                    <th>来源</th>
+                    <th>源IP</th>
+                    <th>时间</th>
+                </tr>
+            </thead>
+            <tbody id="recent-alerts-body">
+                <tr><td colspan="5" class="empty">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<script>
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadSystemMonitor();
+    loadDashboardStats();
+    loadTrafficChart();
+    loadThreatChart();
+    loadIpGeoData();
+    loadWorldMap();
+    loadRecentAlerts();
+
+    // 定时刷新
+    setInterval(loadSystemMonitor, 5000);    // 系统监控每5秒刷新
+    setInterval(loadDashboardStats, 30000);  // 仪表盘统计每30秒刷新
+    setInterval(loadTrafficChart, 30000);    // 流量趋势每30秒刷新
+    setInterval(loadThreatChart, 30000);     // 威胁分布每30秒刷新
+    setInterval(loadRecentAlerts, 15000);    // 最近告警每15秒刷新
+    setInterval(loadIpGeoData, 60000);       // IP地理数据每60秒刷新
+});
+
+// ===== 统一安全Fetch（防止HTML响应导致JSON解析失败） =====
+function safeFetch(url) {
+    return fetch(url, {credentials: 'same-origin'}).then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var ct = r.headers.get('content-type') || '';
+        if (ct.indexOf('application/json') === -1) {
+            throw new Error('响应格式错误');
+        }
+        return r.json();
+    });
+}
+
+// ===== Canvas 仪表盘绘制 =====
+function drawGauge(canvasId, percent, accentColor) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.scale(dpr, dpr);
+
+    const cx = w / 2;
+    const cy = h - 20;
+    const radius = Math.max(10, Math.min(cx - 20, cy - 15));
+    const lineWidth = 14;
+    const startAngle = Math.PI;
+    const endAngle = 2 * Math.PI;
+    const valueAngle = startAngle + (percent / 100) * Math.PI;
+
+    // 背景弧
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, startAngle, endAngle);
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.15)';
+    ctx.lineWidth = lineWidth;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // 颜色区间弧（绿→黄→红）
+    const zones = [
+        { end: 0.6, color: '#22c55e' },
+        { end: 0.8, color: '#eab308' },
+        { end: 1.0, color: '#ef4444' },
+    ];
+    let prevEnd = 0;
+    zones.forEach(zone => {
+        const zoneStart = startAngle + prevEnd * Math.PI;
+        const zoneEnd = startAngle + zone.end * Math.PI;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, zoneStart, zoneEnd);
+        ctx.strokeStyle = zone.color + '30'; // 20% opacity
+        ctx.lineWidth = lineWidth;
+        ctx.lineCap = 'butt';
+        ctx.stroke();
+        prevEnd = zone.end;
+    });
+
+    // 值弧（渐变色）
+    if (percent > 0.5) {
+        const gradient = ctx.createLinearGradient(cx - radius, cy, cx + radius, cy);
+        if (percent <= 60) {
+            gradient.addColorStop(0, '#13c2c2');
+            gradient.addColorStop(1, '#22c55e');
+        } else if (percent <= 80) {
+            gradient.addColorStop(0, '#22c55e');
+            gradient.addColorStop(1, '#eab308');
+        } else {
+            gradient.addColorStop(0, '#eab308');
+            gradient.addColorStop(1, '#ef4444');
+        }
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, startAngle, valueAngle);
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = lineWidth;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+    }
+
+    // 指针
+    const needleLen = radius - 20;
+    const needleAngle = valueAngle;
+    const nx = cx + needleLen * Math.cos(needleAngle);
+    const ny = cy + needleLen * Math.sin(needleAngle);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(nx, ny);
+    ctx.strokeStyle = accentColor || '#60a5fa';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // 中心圆点
+    ctx.beginPath();
+    ctx.arc(cx, cy, 5, 0, 2 * Math.PI);
+    ctx.fillStyle = accentColor || '#60a5fa';
+    ctx.fill();
+
+    // 刻度标签
+    ctx.fillStyle = 'rgba(148, 163, 184, 0.5)';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    for (let i = 0; i <= 100; i += 20) {
+        const angle = startAngle + (i / 100) * Math.PI;
+        const lx = cx + (radius + 16) * Math.cos(angle);
+        const ly = cy + (radius + 16) * Math.sin(angle);
+        ctx.fillText(i.toString(), lx, ly + 3);
+    }
+}
+
+// ===== 系统监控 =====
+function loadSystemMonitor() {
+    safeFetch('/api/system-monitor')
+        .then(data => {
+            if (data.status !== 'ok') return;
+            const d = data.data;
+
+            // CPU
+            const cpuPct = d.cpu.percent;
+            drawGauge('cpu-gauge', cpuPct, '#e5b800');
+            document.getElementById('cpu-gauge-value').textContent = cpuPct.toFixed(1) + '%';
+            updateBadge('cpu-badge', cpuPct);
+            document.getElementById('cpu-cores').textContent = d.cpu.count_physical + 'P/' + d.cpu.count_logical + 'L';
+            document.getElementById('cpu-load').textContent = d.load.load_1 + ' / ' + d.load.load_5 + ' / ' + d.load.load_15;
+
+            // 内存
+            const memPct = d.memory.percent;
+            drawGauge('mem-gauge', memPct, '#52c41a');
+            document.getElementById('mem-gauge-value').textContent = memPct.toFixed(1) + '%';
+            updateBadge('mem-badge', memPct);
+            document.getElementById('mem-used').textContent = d.memory.used;
+            document.getElementById('mem-total').textContent = d.memory.total;
+
+            // 磁盘
+            const diskPct = d.disk.percent;
+            drawGauge('disk-gauge', diskPct, '#eb2f96');
+            document.getElementById('disk-gauge-value').textContent = diskPct.toFixed(1) + '%';
+            updateBadge('disk-badge', diskPct);
+            document.getElementById('disk-used').textContent = d.disk.used;
+            document.getElementById('disk-total').textContent = d.disk.total;
+
+            // 并发连接（计算并发比）
+            const maxConn = 2048;
+            const connPct = Math.min(100, (d.connections.total / maxConn) * 100);
+            drawGauge('conn-gauge', connPct, '#13c2c2');
+            document.getElementById('conn-gauge-value').textContent = connPct.toFixed(2) + '%';
+            document.getElementById('conn-fraction').textContent = d.connections.total + '/' + maxConn;
+            document.getElementById('conn-est').textContent = d.connections.established;
+            document.getElementById('conn-tw').textContent = d.connections.time_wait;
+            document.getElementById('conn-cw').textContent = d.connections.close_wait;
+            document.getElementById('conn-listen').textContent = d.connections.listen;
+
+            // 连接数阈值判断
+            const connBadge = document.getElementById('conn-badge');
+            if (d.connections.close_wait > 100) {
+                connBadge.textContent = '异常';
+                connBadge.className = 'monitor-badge danger';
+            } else if (connPct > 80) {
+                connBadge.textContent = '较高';
+                connBadge.className = 'monitor-badge warn';
+            } else {
+                connBadge.textContent = '正常';
+                connBadge.className = 'monitor-badge ok';
+            }
+        })
+        .catch(err => console.error('加载系统监控失败:', err));
+}
+
+function updateBadge(badgeId, percent) {
+    const badge = document.getElementById(badgeId);
+    if (percent > 90) {
+        badge.textContent = '危险';
+        badge.className = 'monitor-badge danger';
+    } else if (percent > 80) {
+        badge.textContent = '较高';
+        badge.className = 'monitor-badge warn';
+    } else {
+        badge.textContent = '正常';
+        badge.className = 'monitor-badge ok';
+    }
+}
+
+// ===== 仪表盘统计 =====
+function loadDashboardStats() {
+    safeFetch('/api/stats')
+        .then(data => {
+            if (data.status === 'ok') {
+                document.getElementById('critical-alerts').textContent = data.data.alerts.critical;
+                document.getElementById('new-alerts').textContent = data.data.alerts.new;
+                document.getElementById('traffic-packets').textContent = data.data.traffic.packets_last_hour;
+                document.getElementById('open-vulns').textContent = data.data.scans.open_vulns;
+            }
+        })
+        .catch(err => console.error('加载统计失败:', err));
+}
+
+// ===== 流量趋势图 =====
+let trafficChartInstance = null;
+
+function loadTrafficChart() {
+    safeFetch('/api/traffic/chart')
+        .then(data => {
+            if (data.status === 'ok') {
+                const ctx = document.getElementById('traffic-chart').getContext('2d');
+
+                // 销毁旧实例，防止重复创建
+                if (trafficChartInstance) {
+                    trafficChartInstance.destroy();
+                    trafficChartInstance = null;
+                }
+
+                const isSimulated = data.data.simulated;
+                trafficChartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.data.labels.map(l => {
+                            if (!l) return '';
+                            const parts = l.split(' ');
+                            return parts.length > 1 ? parts[1] : l;
+                        }),
+                        datasets: [{
+                            label: isSimulated ? '流量 (包/分钟) [模拟数据]' : '流量 (包/分钟)',
+                            data: data.data.values,
+                            borderColor: isSimulated ? '#f59e0b' : '#2563eb',
+                            backgroundColor: isSimulated ? 'rgba(245, 158, 11, 0.1)' : 'rgba(37, 99, 235, 0.1)',
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 2,
+                            pointHoverRadius: 5,
+                            borderWidth: 2,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                        },
+                        scales: {
+                            x: {
+                                ticks: { color: '#94a3b8', maxTicksLimit: 10, font: { size: 11 } },
+                                grid: { color: 'rgba(148,163,184,0.08)' }
+                            },
+                            y: {
+                                ticks: { color: '#94a3b8', font: { size: 11 } },
+                                grid: { color: 'rgba(148,163,184,0.08)' },
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            }
+        })
+        .catch(err => console.error('加载流量图表失败:', err));
+}
+
+// ===== 威胁类型分布图 =====
+let threatChartInstance = null;
+
+function loadThreatChart() {
+    safeFetch('/api/threats')
+        .then(data => {
+            if (data.status === 'ok' && data.data.labels.length > 0) {
+                const ctx = document.getElementById('threat-chart').getContext('2d');
+
+                if (threatChartInstance) {
+                    threatChartInstance.destroy();
+                    threatChartInstance = null;
+                }
+
+                threatChartInstance = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: data.data.labels,
+                        datasets: [{
+                            data: data.data.values,
+                            backgroundColor: ['#dc2626', '#f59e0b', '#0ea5e9', '#16a34a', '#8b5cf6', '#ec4899'],
+                            borderColor: '#1e293b',
+                            borderWidth: 2,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        cutout: '60%',
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: {
+                                    color: '#94a3b8',
+                                    padding: 12,
+                                    font: { size: 11 },
+                                    usePointStyle: true,
+                                    pointStyleWidth: 8,
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        })
+        .catch(err => console.error('加载威胁分布失败:', err));
+}
+
+// ===== IP归属地数据 =====
+function loadIpGeoData() {
+    safeFetch('/api/ip-geo?limit=50')
+        .then(data => {
+            if (data.status === 'ok') {
+                const tbody = document.getElementById('ip-geo-body');
+                const countEl = document.getElementById('ip-geo-count');
+
+                if (data.data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>';
+                    countEl.textContent = '';
+                    return;
+                }
+
+                countEl.textContent = '共 ' + data.data.length + ' 条';
+
+                tbody.innerHTML = data.data.map(item => {
+                    const threatClass = item.is_threat ? 'status-down' : 'status-up';
+                    const threatText = item.is_threat ? '威胁' : '正常';
+                    const privateTag = item.is_private ? '<span class="badge badge-medium">内网</span>' : '';
+                    const anomalyCount = item.anomalies > 0
+                        ? '<span style="color: #fca5a5;">' + item.anomalies + '</span>'
+                        : '<span style="color: var(--text-muted);">0</span>';
+                    const countryFlag = item.country === '中国' ? '&#127464;&#127475;' : 
+                                       item.country === '美国' ? '&#127482;&#127480;' :
+                                       item.country === '日本' ? '&#127471;&#127477;' :
+                                       item.country === '韩国' ? '&#127472;&#127479;' :
+                                       item.country === '俄罗斯' ? '&#127479;&#127482;' : '&#127758;';
+
+                    return '<tr class="' + (item.is_threat ? 'row-threat' : '') + '">' +
+                        '<td><code class="ip-code">' + item.ip + '</code> ' + privateTag + '</td>' +
+                        '<td>' + countryFlag + ' ' + (item.country || '-') + '</td>' +
+                        '<td>' + (item.province || '-') + '</td>' +
+                        '<td>' + (item.city || '-') + '</td>' +
+                        '<td>' + (item.isp || '-') + '</td>' +
+                        '<td>' + (item.connections || 0) + '</td>' +
+                        '<td>' + anomalyCount + '</td>' +
+                        '<td><span class="status ' + threatClass + '">' + threatText + '</span></td>' +
+                    '</tr>';
+                }).join('');
+            }
+        })
+        .catch(err => console.error('加载IP归属地失败:', err));
+}
+
+// ===== 最近告警 =====
+function loadRecentAlerts() {
+    safeFetch('/api/alerts/recent?limit=10')
+        .then(data => {
+            if (data.status === 'ok') {
+                const tbody = document.getElementById('recent-alerts-body');
+                if (data.data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无告警</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.data.map(a => `
+                    <tr class="level-${a.level}">
+                        <td><span class="badge badge-${a.level}">${a.level}</span></td>
+                        <td>${a.title}</td>
+                        <td>${a.source}</td>
+                        <td>${a.source_ip || '-'}</td>
+                        <td>${formatTime(a.created_at)}</td>
+                    </tr>
+                `).join('');
+            }
+        })
+        .catch(err => console.error('加载告警失败:', err));
+}
+
+// ===== 世界地图 =====
+function loadWorldMap() {
+    const mapDiv = document.getElementById('world-map');
+
+    // 动态加载 ECharts
+    if (window.echarts) {
+        initMapWithECharts();
+        return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js';
+    script.onload = function() {
+        initMapWithECharts();
+    };
+    script.onerror = function() {
+        mapDiv.innerHTML = '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--text-muted);text-align:center;">' +
+            '<p>ECharts 加载失败</p><p style="font-size:12px;margin-top:8px;">请检查网络连接</p></div>';
+    };
+    document.head.appendChild(script);
+}
+
+function initMapWithECharts() {
+    // 检查地图是否已注册（兼容页面切换时不重复加载）
+    if (echarts.getMap && echarts.getMap('world')) {
+        loadWorldMapData();
+        return;
+    }
+
+    const mapDiv = document.getElementById('world-map');
+    // 加载标准 GeoJSON 格式的世界地图数据（兼容 ECharts 5.x）
+    fetch('https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/json/world.json')
+        .then(function(res) {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
+        })
+        .then(function(worldJson) {
+            // 注册世界地图
+            echarts.registerMap('world', worldJson);
+            loadWorldMapData();
+        })
+        .catch(function(err) {
+            console.error('加载世界地图数据失败:', err);
+            mapDiv.innerHTML = '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--text-muted);text-align:center;">' +
+                '<p>地图数据加载失败</p><p style="font-size:12px;margin-top:8px;">请检查网络连接</p></div>';
+        });
+}
+
+function loadWorldMapData() {
+    const mapDiv = document.getElementById('world-map');
+
+    // 复用已有实例，避免页面切换时重复创建
+    let chart = echarts.getInstanceByDom(mapDiv);
+    if (!chart) {
+        chart = echarts.init(mapDiv, 'dark');
+    }
+    // 存储实例引用用于 resize
+    window._worldMapChart = chart;
+    chart.showLoading({
+        text: '',
+        color: '#2563eb',
+        maskColor: 'rgba(15, 23, 42, 0.8)',
+    });
+
+    safeFetch('/api/ip-geo?limit=200')
+        .then(data => {
+            chart.hideLoading();
+
+            // 隐藏加载提示
+            const loadingEl = document.getElementById('map-loading');
+            if (loadingEl) loadingEl.style.display = 'none';
+
+            if (data.status === 'ok') {
+                initWorldMap(chart, data.data);
+            } else {
+                showWorldMapEmpty(chart);
+            }
+        })
+        .catch(err => {
+            chart.hideLoading();
+            console.error('加载地图数据失败:', err);
+            showWorldMapEmpty(chart);
+        });
+}
+
+function showWorldMapEmpty(chart) {
+    // 无数据时生成全球模拟散点
+    const countries = [
+        {name: '美国', lat: 37.09, lng: -95.71}, {name: '中国', lat: 35.86, lng: 104.19},
+        {name: '日本', lat: 36.20, lng: 138.25}, {name: '德国', lat: 51.16, lng: 10.45},
+        {name: '英国', lat: 55.37, lng: -3.43}, {name: '法国', lat: 46.22, lng: 2.21},
+        {name: '巴西', lat: -14.23, lng: -51.92}, {name: '印度', lat: 20.59, lng: 78.96},
+        {name: '韩国', lat: 35.90, lng: 127.76}, {name: '俄罗斯', lat: 61.52, lng: 105.31},
+        {name: '澳大利亚', lat: -25.27, lng: 133.77}, {name: '加拿大', lat: 56.13, lng: -106.34},
+        {name: '新加坡', lat: 1.35, lng: 103.82}, {name: '意大利', lat: 41.87, lng: 12.56},
+        {name: '荷兰', lat: 52.13, lng: 5.29}, {name: '泰国', lat: 15.87, lng: 100.99},
+        {name: '越南', lat: 14.05, lng: 108.27}, {name: '南非', lat: -30.55, lng: 22.93},
+        {name: '墨西哥', lat: 23.63, lng: -102.55}, {name: '阿根廷', lat: -38.41, lng: -63.61},
+    ];
+    const points = countries.map(c => ({
+        name: c.name, value: [c.lng + (Math.random()-0.5)*4, c.lat + (Math.random()-0.5)*4, Math.floor(Math.random()*30)+5],
+        country: c.name, province: '', city: '', isp: '', is_threat: Math.random() < 0.15
+    }));
+    const option = {
+        backgroundColor: 'transparent',
+        tooltip: { trigger: 'item' },
+        geo: {
+            map: 'world', roam: true, zoom: 1.2, center: [20, 20],
+            scaleLimit: { min: 1, max: 20 },
+            label: { show: false },
+            itemStyle: { areaColor: '#1e293b', borderColor: '#334155' },
+            emphasis: { label: { show: false }, itemStyle: { areaColor: '#334155' } }
+        },
+        series: [{
+            name: '模拟数据', type: 'effectScatter', coordinateSystem: 'geo',
+            data: points,
+            symbolSize: function(val) { return Math.max(6, Math.min(16, val[2])); },
+            rippleEffect: { brushType: 'stroke', scale: 2.5, period: 4 },
+            itemStyle: { color: '#60a5fa', shadowBlur: 6, shadowColor: 'rgba(96,165,250,0.3)' },
+            label: { show: false }, zlevel: 1,
+        }]
+    };
+    chart.setOption(option);
+    window.addEventListener('resize', () => chart.resize());
+}
+
+function initWorldMap(chart, geoData) {
+    // 过滤掉内网和无效坐标的 IP
+    const validData = geoData.filter(item => !item.is_private && item.latitude && item.longitude);
+
+    // 按国家聚合统计
+    const countryMap = {};
+    geoData.forEach(item => {
+        if (item.country && item.country !== '内网' && item.country !== '未知') {
+            if (!countryMap[item.country]) {
+                countryMap[item.country] = { connections: 0, threats: 0 };
+            }
+            countryMap[item.country].connections += (item.connections || 1);
+            if (item.is_threat) countryMap[item.country].threats += 1;
+        }
+    });
+
+    // 国家名称映射（中文 -> 英文，用于 ECharts 世界地图）
+    const countryNameMap = {
+        '中国': 'China', '美国': 'United States', '日本': 'Japan',
+        '韩国': 'Korea', '俄罗斯': 'Russia', '英国': 'United Kingdom',
+        '德国': 'Germany', '法国': 'France', '印度': 'India',
+        '巴西': 'Brazil', '澳大利亚': 'Australia', '加拿大': 'Canada',
+        '新加坡': 'Singapore', '香港': 'China', '台湾': 'China',
+        '澳门': 'China', '荷兰': 'Netherlands', '瑞典': 'Sweden',
+        '意大利': 'Italy', '西班牙': 'Spain', '泰国': 'Thailand',
+        '越南': 'Vietnam', '印度尼西亚': 'Indonesia', '菲律宾': 'Philippines',
+        '马来西亚': 'Malaysia', '土耳其': 'Turkey', '南非': 'South Africa',
+        '墨西哥': 'Mexico', '阿根廷': 'Argentina', '波兰': 'Poland',
+        '乌克兰': 'Ukraine', '以色列': 'Israel',
+        'United Arab Emirates': 'United Arab Emirates',
+    };
+
+    // 世界地图热力数据
+    const mapData = Object.keys(countryMap).map(name => {
+        const englishName = countryNameMap[name] || name;
+        return {
+            name: englishName,
+            value: countryMap[name].connections,
+            originalName: name
+        };
+    });
+
+    // 威胁 IP 散点（红色）
+    const threatPoints = validData.filter(item => item.is_threat).map(item => ({
+        name: item.ip,
+        value: [item.longitude, item.latitude, item.connections || 1],
+        country: item.country,
+        province: item.province,
+        city: item.city,
+        isp: item.isp,
+        is_threat: true
+    }));
+
+    // 正常 IP 散点（蓝色）
+    const normalPoints = validData.filter(item => !item.is_threat).map(item => ({
+        name: item.ip,
+        value: [item.longitude, item.latitude, item.connections || 1],
+        country: item.country,
+        province: item.province,
+        city: item.city,
+        isp: item.isp,
+        is_threat: false
+    }));
+
+    // 中国 IP 散点（绿色高亮）
+    const chinaPoints = validData.filter(item => item.country === '中国' && !item.is_threat).map(item => ({
+        name: item.ip,
+        value: [item.longitude, item.latitude, item.connections || 1],
+        country: item.country,
+        province: item.province,
+        city: item.city,
+        isp: item.isp,
+        is_threat: false
+    }));
+
+    const maxConn = Math.max(...mapData.map(d => d.value), 1);
+
+    const option = {
+        backgroundColor: 'transparent',
+        title: {
+            show: false,
+        },
+        tooltip: {
+            trigger: 'item',
+            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+            borderColor: '#334155',
+            borderWidth: 1,
+            padding: [12, 16],
+            textStyle: {
+                color: '#e2e8f0',
+                fontSize: 13,
+            },
+            formatter: function(params) {
+                if (params.seriesType === 'effectScatter') {
+                    const d = params.data;
+                    const threatTag = d.is_threat
+                        ? '<span style="color:#fca5a5;font-weight:600;">&#9888; 威胁IP</span>'
+                        : '<span style="color:#86efac;">&#10003; 正常</span>';
+                    const countryFlag = d.country === '中国' ? '&#127464;&#127475;' : 
+                                       d.country === '美国' ? '&#127482;&#127480;' :
+                                       d.country === '日本' ? '&#127471;&#127477;' :
+                                       d.country === '韩国' ? '&#127472;&#127479;' : '&#127758;';
+                    return '<div style="min-width:180px;">' +
+                        '<div style="font-weight:600;font-size:14px;margin-bottom:8px;border-bottom:1px solid #334155;padding-bottom:6px;">' + countryFlag + ' ' + d.name + '</div>' +
+                        '<div style="line-height:1.8;">' +
+                        '<span style="color:#94a3b8;">国家:</span> ' + (d.country || '-') + '<br/>' +
+                        '<span style="color:#94a3b8;">地区:</span> ' + (d.province || d.city || '-') + '<br/>' +
+                        '<span style="color:#94a3b8;">运营商:</span> ' + (d.isp || '-') + '<br/>' +
+                        '<span style="color:#94a3b8;">连接数:</span> <b>' + d.value[2] + '</b><br/>' +
+                        threatTag +
+                        '</div></div>';
+                }
+                if (params.seriesType === 'map') {
+                    const countryName = params.data.originalName || params.name;
+                    const countryInfo = countryMap[countryName];
+                    const threatInfo = countryInfo && countryInfo.threats > 0
+                        ? '<br/><span style="color:#fca5a5;">威胁IP: ' + countryInfo.threats + '</span>'
+                        : '';
+                    return '<b>' + countryName + '</b><br/>' +
+                        '<span style="color:#94a3b8;">连接数:</span> ' + (params.value || 0) +
+                        threatInfo;
+                }
+                return params.name;
+            }
+        },
+        visualMap: {
+            min: 0,
+            max: maxConn,
+            left: 20,
+            bottom: 20,
+            text: ['高', '低'],
+            textStyle: { color: '#94a3b8', fontSize: 12 },
+            inRange: {
+                color: ['#1e293b', '#1e3a5f', '#1d4ed8', '#2563eb', '#3b82f6', '#60a5fa']
+            },
+            calculable: true,
+            itemWidth: 12,
+            itemHeight: 100,
+        },
+        geo: {
+            map: 'world',
+            roam: true,
+            zoom: 1.2,
+            center: [20, 20],
+            scaleLimit: { min: 1, max: 20 },
+            label: {
+                show: false,
+                color: '#94a3b8',
+                fontSize: 10,
+            },
+            itemStyle: {
+                areaColor: '#1e293b',
+                borderColor: '#334155',
+                borderWidth: 0.5,
+            },
+            emphasis: {
+                label: {
+                    show: false,
+                },
+                itemStyle: {
+                    areaColor: '#334155',
+                    borderColor: '#60a5fa',
+                    borderWidth: 1,
+                }
+            },
+            select: {
+                label: { show: false },
+                itemStyle: { areaColor: '#1d4ed8' }
+            }
+        },
+        series: [
+            {
+                name: '连接密度',
+                type: 'map',
+                map: 'world',
+                geoIndex: 0,
+                data: mapData,
+                selectedMode: false,
+            },
+            {
+                name: '威胁IP',
+                type: 'effectScatter',
+                coordinateSystem: 'geo',
+                data: threatPoints,
+                symbolSize: function(val) {
+                    return Math.max(10, Math.min(25, val[2] * 2));
+                },
+                rippleEffect: {
+                    brushType: 'stroke',
+                    scale: 4,
+                    period: 3,
+                },
+                itemStyle: {
+                    color: '#dc2626',
+                    shadowBlur: 10,
+                    shadowColor: 'rgba(220, 38, 38, 0.5)',
+                },
+                label: {
+                    show: false,
+                },
+                zlevel: 2,
+            },
+            {
+                name: '正常IP',
+                type: 'effectScatter',
+                coordinateSystem: 'geo',
+                data: normalPoints,
+                symbolSize: function(val) {
+                    return Math.max(6, Math.min(16, val[2]));
+                },
+                rippleEffect: {
+                    brushType: 'stroke',
+                    scale: 2.5,
+                    period: 4,
+                },
+                itemStyle: {
+                    color: '#60a5fa',
+                    shadowBlur: 6,
+                    shadowColor: 'rgba(96, 165, 250, 0.3)',
+                },
+                label: {
+                    show: false,
+                },
+                zlevel: 1,
+            },
+            {
+                name: '中国IP',
+                type: 'effectScatter',
+                coordinateSystem: 'geo',
+                data: chinaPoints,
+                symbolSize: function(val) {
+                    return Math.max(8, Math.min(18, val[2] * 1.2));
+                },
+                rippleEffect: {
+                    brushType: 'stroke',
+                    scale: 3,
+                    period: 3.5,
+                },
+                itemStyle: {
+                    color: '#22c55e',
+                    shadowBlur: 8,
+                    shadowColor: 'rgba(34, 197, 94, 0.4)',
+                },
+                label: {
+                    show: false,
+                },
+                zlevel: 1,
+            }
+        ]
+    };
+
+    chart.setOption(option);
+
+    // 响应式 - 使用 ResizeObserver 监听容器尺寸变化
+    const mapContainer = document.getElementById('world-map');
+    if (window.ResizeObserver) {
+        const resizeObserver = new ResizeObserver(function() {
+            chart.resize();
+        });
+        resizeObserver.observe(mapContainer);
+    }
+    window.addEventListener('resize', function() {
+        chart.resize();
+    });
+}
+</script>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ===== 系统监控卡片 - 仪表盘样式 ===== */
+.monitor-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.monitor-card {
+    background: var(--card-bg, #1e293b);
+    border: 1px solid var(--border, #334155);
+    border-radius: 10px;
+    padding: 16px 18px;
+    transition: border-color 0.3s;
+}
+
+.monitor-card.gauge-card {
+    border-color: var(--card-accent, var(--border, #334155));
+    border-width: 2px;
+}
+
+.monitor-card:hover {
+    border-color: var(--card-accent, var(--primary, #3b82f6));
+    box-shadow: 0 0 20px color-mix(in srgb, var(--card-accent, #3b82f6) 20%, transparent);
+}
+
+.monitor-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.monitor-label {
+    font-size: 13px;
+    color: var(--text-muted, #94a3b8);
+    font-weight: 500;
+}
+
+.monitor-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+}
+
+.monitor-badge.ok {
+    background: rgba(34, 197, 94, 0.15);
+    color: #4ade80;
+}
+
+.monitor-badge.warn {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+}
+
+.monitor-badge.danger {
+    background: rgba(220, 38, 38, 0.15);
+    color: #f87171;
+}
+
+/* 仪表盘容器 */
+.gauge-container {
+    position: relative;
+    width: 100%;
+    max-width: 220px;
+    margin: 0 auto;
+}
+
+.gauge-container canvas {
+    width: 100%;
+    height: 130px;
+    display: block;
+}
+
+.gauge-value {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text, #e2e8f0);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    z-index: 2;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+
+.gauge-fraction {
+    position: absolute;
+    bottom: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-muted, #94a3b8);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    z-index: 2;
+}
+
+.monitor-detail {
+    font-size: 12px;
+    color: var(--text-muted, #94a3b8);
+    line-height: 1.5;
+}
+
+.conn-mini-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 12px;
+    font-size: 11px;
+}
+
+.conn-mini-stats strong {
+    color: var(--text, #e2e8f0);
+}
+
+@media (max-width: 1024px) {
+    .monitor-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .monitor-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ===== 仪表盘页面 ===== */
+.dashboard-page {
+    max-width: 1400px;
+}
+
+/* ===== 地图图例 ===== */
+.map-legend {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.dot-threat {
+    background: #dc2626;
+    box-shadow: 0 0 6px rgba(220, 38, 38, 0.6);
+}
+
+.dot-normal {
+    background: #60a5fa;
+    box-shadow: 0 0 6px rgba(96, 165, 250, 0.4);
+}
+
+.dot-china {
+    background: #22c55e;
+    box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
+}
+
+.dot-other {
+    background: #f59e0b;
+    box-shadow: 0 0 6px rgba(245, 158, 11, 0.4);
+}
+
+/* ===== 地图加载动画 ===== */
+.map-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ===== 表格增强 ===== */
+.table-wrapper {
+    overflow-x: auto;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.ip-code {
+    background: rgba(37, 99, 235, 0.1);
+    color: #93c5fd;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 12px;
+}
+
+.row-threat {
+    background: rgba(220, 38, 38, 0.05);
+}
+
+.row-threat:hover {
+    background: rgba(220, 38, 38, 0.1) !important;
+}
+
+.text-muted {
+    color: var(--text-muted);
+}
+
+/* ===== 按钮图标 ===== */
+.btn-icon {
+    font-size: 14px;
+    vertical-align: middle;
+}
+
+/* ===== 图表卡片高度 ===== */
+.charts-row .chart-card {
+    min-height: 280px;
+}
+
+/* 地图容器不受 canvas 高度限制 */
+#world-map {
+    width: 100% !important;
+}
+
+#world-map canvas {
+    max-height: none !important;
+}
+
+.charts-row .chart-card:not(:has(#world-map)) canvas {
+    max-height: 220px;
+}
+
+/* ===== 响应式 ===== */
+@media (max-width: 1024px) {
+    .charts-row {
+        grid-template-columns: 1fr !important;
+    }
+
+    .charts-row .chart-card[style*="grid-column: span 2"] {
+        grid-column: span 1 !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .map-legend {
+        display: none;
+    }
+}
+</style>
+{% endblock %}

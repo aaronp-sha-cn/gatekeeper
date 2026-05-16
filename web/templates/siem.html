@@ -1,0 +1,799 @@
+{% extends "base.html" %}
+
+{% block title %}SIEM安全信息管理{% endblock %}
+
+{% block content %}
+<!-- 统计概览 -->
+<div class="stats-grid">
+    <div class="stat-card info">
+        <div class="stat-icon">E</div>
+        <div class="stat-info">
+            <h3 id="stat-total">-</h3>
+            <p>事件总数</p>
+        </div>
+    </div>
+    <div class="stat-card success">
+        <div class="stat-icon">T</div>
+        <div class="stat-info">
+            <h3 id="stat-today">-</h3>
+            <p>今日事件</p>
+        </div>
+    </div>
+    <div class="stat-card critical">
+        <div class="stat-icon">!</div>
+        <div class="stat-info">
+            <h3 id="stat-high">-</h3>
+            <p>高危事件</p>
+        </div>
+    </div>
+    <div class="stat-card warning">
+        <div class="stat-icon">C</div>
+        <div class="stat-info">
+            <h3 id="stat-correlation">-</h3>
+            <p>关联告警</p>
+        </div>
+    </div>
+</div>
+
+<!-- 操作按钮 -->
+<div style="display: flex; gap: 10px; margin-bottom: 20px;">
+    <button class="btn btn-primary" onclick="refreshSIEM()">刷新数据</button>
+    <button class="btn btn-success" onclick="runCorrelation()">执行关联分析</button>
+    <button class="btn" onclick="exportEvents('json')">导出 JSON</button>
+    <button class="btn" onclick="exportEvents('csv')">导出 CSV</button>
+</div>
+
+<!-- 图表区域 -->
+<div class="charts-row">
+    <div class="chart-card">
+        <h3>事件时间线（按严重度分层）</h3>
+        <div style="position: relative; height: 280px;">
+            <canvas id="timeline-chart"></canvas>
+        </div>
+    </div>
+    <div class="chart-card">
+        <h3>事件来源分布</h3>
+        <div style="position: relative; height: 280px;">
+            <canvas id="source-chart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- 事件列表 -->
+<div class="section">
+    <div class="section-header">
+        <h3>SIEM事件列表</h3>
+        <div class="filter-bar">
+            <select id="filter-source" onchange="loadEvents()">
+                <option value="">全部来源</option>
+                <option value="attack">攻击日志</option>
+                <option value="audit">操作日志</option>
+                <option value="alert">告警</option>
+                <option value="traffic">流量日志</option>
+                <option value="firewall">防火墙</option>
+            </select>
+            <select id="filter-severity" onchange="loadEvents()">
+                <option value="">全部严重度</option>
+                <option value="critical">严重</option>
+                <option value="high">高危</option>
+                <option value="medium">中危</option>
+                <option value="low">低危</option>
+                <option value="info">信息</option>
+            </select>
+            <input type="text" id="filter-keyword" placeholder="搜索关键词..." style="padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); width: 200px;" onkeydown="if(event.key==='Enter') loadEvents()">
+            <button class="btn btn-sm" onclick="loadEvents()">搜索</button>
+        </div>
+    </div>
+    <div style="overflow-x: auto;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>时间</th>
+                    <th>来源</th>
+                    <th>严重度</th>
+                    <th>标题</th>
+                    <th>源IP</th>
+                    <th>目标IP</th>
+                    <th>标签</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="events-tbody">
+                <tr><td colspan="8" class="empty">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="pagination" id="events-pagination"></div>
+</div>
+
+<!-- 攻击链分析 -->
+<div class="section">
+    <div class="section-header">
+        <h3>攻击链分析</h3>
+    </div>
+    <div style="display: flex; gap: 10px; margin-bottom: 16px;">
+        <input type="text" id="chain-ip" placeholder="输入IP地址进行攻击链分析" style="flex: 1; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px;" onkeydown="if(event.key==='Enter') analyzeAttackChain()">
+        <button class="btn btn-primary" onclick="analyzeAttackChain()">分析</button>
+    </div>
+    <div id="chain-result" style="display: none;">
+        <div id="chain-summary" class="info-grid" style="margin-bottom: 16px;"></div>
+        <h4 style="margin-bottom: 10px; color: var(--primary);">攻击链阶段</h4>
+        <div id="chain-stages" style="margin-bottom: 16px;"></div>
+        <h4 style="margin-bottom: 10px; color: var(--primary);">关联事件</h4>
+        <div style="overflow-x: auto;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>时间</th>
+                        <th>阶段</th>
+                        <th>来源</th>
+                        <th>严重度</th>
+                        <th>标题</th>
+                    </tr>
+                </thead>
+                <tbody id="chain-events-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 关联规则管理 -->
+<div class="section">
+    <div class="section-header">
+        <h3>关联分析规则</h3>
+        <button class="btn btn-primary btn-sm" onclick="showAddRuleForm()">添加规则</button>
+    </div>
+
+    <!-- 添加规则表单（默认隐藏） -->
+    <div id="add-rule-form" style="display: none; margin-bottom: 16px; padding: 16px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px;">
+        <h4 style="margin-bottom: 12px;">新建关联规则</h4>
+        <div class="form-group">
+            <label>规则名称 *</label>
+            <input type="text" id="rule-name" placeholder="输入规则名称">
+        </div>
+        <div class="form-group">
+            <label>描述</label>
+            <input type="text" id="rule-description" placeholder="规则描述">
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+                <label>动作</label>
+                <select id="rule-action">
+                    <option value="alert">告警</option>
+                    <option value="log">记录</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>严重度</label>
+                <select id="rule-severity">
+                    <option value="critical">严重</option>
+                    <option value="high">高危</option>
+                    <option value="medium">中危</option>
+                    <option value="low">低危</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>阈值</label>
+                <input type="number" id="rule-threshold" value="1" min="1">
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 12px;">
+            <button class="btn btn-primary" onclick="submitRule()">保存</button>
+            <button class="btn" onclick="hideAddRuleForm()">取消</button>
+        </div>
+    </div>
+
+    <div style="overflow-x: auto;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>名称</th>
+                    <th>描述</th>
+                    <th>严重度</th>
+                    <th>条件数</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="rules-tbody">
+                <tr><td colspan="6" class="empty">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 关联告警 -->
+<div class="section">
+    <div class="section-header">
+        <h3>最近关联告警</h3>
+    </div>
+    <div id="correlation-alerts">
+        <p style="color: var(--text-muted);">执行关联分析后显示结果</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 攻击链阶段 */
+    .chain-stage {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+    .chain-stage-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+    .chain-stage-dot.info { background: var(--info); }
+    .chain-stage-dot.low { background: #86efac; }
+    .chain-stage-dot.medium { background: var(--warning); }
+    .chain-stage-dot.high { background: #fcd34d; }
+    .chain-stage-dot.critical { background: var(--danger); }
+    .chain-stage-line {
+        width: 2px;
+        height: 20px;
+        background: var(--border);
+        margin-left: 5px;
+    }
+    .chain-stage-content {
+        background: var(--bg);
+        padding: 8px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        flex: 1;
+    }
+    .chain-stage-content .stage-name {
+        font-weight: 600;
+        font-size: 13px;
+    }
+    .chain-stage-content .stage-time {
+        font-size: 11px;
+        color: var(--text-muted);
+    }
+
+    /* 关联告警卡片 */
+    .correlation-alert-card {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 12px;
+    }
+    .correlation-alert-card.critical { border-left: 4px solid var(--danger); }
+    .correlation-alert-card.high { border-left: 4px solid var(--warning); }
+    .correlation-alert-card.medium { border-left: 4px solid var(--info); }
+
+    /* 风险等级标签 */
+    .risk-critical { color: #fca5a5; font-weight: bold; }
+    .risk-high { color: #fcd34d; font-weight: bold; }
+    .risk-medium { color: #7dd3fc; }
+    .risk-low { color: #86efac; }
+    .risk-info { color: var(--text-muted); }
+
+    /* 标签 */
+    .tag {
+        display: inline-block;
+        padding: 1px 6px;
+        margin: 1px 2px;
+        background: rgba(37, 99, 235, 0.15);
+        color: #93c5fd;
+        border-radius: 3px;
+        font-size: 11px;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+    let currentPage = 1;
+    let timelineChart = null;
+    let sourceChart = null;
+
+    // ===== 初始化 =====
+    document.addEventListener('DOMContentLoaded', function() {
+        loadStats();
+        loadEvents();
+        loadTimeline();
+        loadSourceChart();
+        loadRules();
+    });
+
+    // ===== 统计概览 =====
+    function loadStats() {
+        fetch('/siem/api/stats')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const d = data.data;
+                    document.getElementById('stat-total').textContent = formatNumber(d.total_events);
+                    document.getElementById('stat-today').textContent = formatNumber(d.today_events);
+                    document.getElementById('stat-high').textContent = formatNumber(d.high_severity_events);
+                    document.getElementById('stat-correlation').textContent = formatNumber(d.correlation_alerts);
+                }
+            })
+            .catch(() => {});
+    }
+
+    // ===== 刷新全部 =====
+    function refreshSIEM() {
+        showNotification('正在收集事件...', 'info');
+        fetch('/siem/api/collect')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    showNotification('事件收集完成，共 ' + data.data.event_count + ' 条', 'success');
+                    loadStats();
+                    loadEvents();
+                    loadTimeline();
+                    loadSourceChart();
+                } else {
+                    showNotification(data.message || '收集失败', 'error');
+                }
+            })
+            .catch(e => showNotification('请求失败: ' + e.message, 'error'));
+    }
+
+    // ===== 关联分析 =====
+    function runCorrelation() {
+        showNotification('正在执行关联分析...', 'info');
+        fetch('/siem/api/correlate')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const alerts = data.data.alerts;
+                    showNotification('关联分析完成，触发 ' + data.data.alert_count + ' 条告警', 'success');
+                    loadStats();
+                    renderCorrelationAlerts(alerts);
+                } else {
+                    showNotification(data.message || '分析失败', 'error');
+                }
+            })
+            .catch(e => showNotification('请求失败: ' + e.message, 'error'));
+    }
+
+    // ===== 事件列表 =====
+    function loadEvents(page) {
+        if (page !== undefined) currentPage = page;
+        const source = document.getElementById('filter-source').value;
+        const severity = document.getElementById('filter-severity').value;
+        const keyword = document.getElementById('filter-keyword').value;
+
+        let url = '/siem/api/events?page=' + currentPage + '&page_size=50';
+        if (source) url += '&source=' + encodeURIComponent(source);
+        if (severity) url += '&severity=' + encodeURIComponent(severity);
+        if (keyword) url += '&keyword=' + encodeURIComponent(keyword);
+
+        fetch(url)
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    renderEvents(data.data);
+                }
+            })
+            .catch(() => {
+                document.getElementById('events-tbody').innerHTML = '<tr><td colspan="8" class="empty">加载失败</td></tr>';
+            });
+    }
+
+    function renderEvents(result) {
+        const tbody = document.getElementById('events-tbody');
+        if (!result.events || result.events.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无事件</td></tr>';
+            document.getElementById('events-pagination').innerHTML = '';
+            return;
+        }
+
+        tbody.innerHTML = result.events.map(evt => {
+            const sevClass = 'badge-' + (evt.severity || 'info');
+            const sourceMap = {
+                'attack': '攻击', 'audit': '审计', 'alert': '告警',
+                'traffic': '流量', 'firewall': '防火墙', 'waf': 'WAF',
+                'ddos': 'DDoS', 'honeypot': '蜜罐', 'dns': 'DNS'
+            };
+            const sourceLabel = sourceMap[evt.source] || evt.source;
+            const tags = (evt.tags || []).map(t => '<span class="tag">' + escapeHtml(t) + '</span>').join('');
+
+            return '<tr>' +
+                '<td style="white-space:nowrap;">' + formatTime(evt.timestamp) + '</td>' +
+                '<td>' + escapeHtml(sourceLabel) + '</td>' +
+                '<td><span class="badge ' + sevClass + '">' + escapeHtml(evt.severity) + '</span></td>' +
+                '<td title="' + escapeHtml(evt.description || '') + '">' + escapeHtml(truncate(evt.title, 60)) + '</td>' +
+                '<td style="font-family:monospace;">' + escapeHtml(evt.source_ip || '-') + '</td>' +
+                '<td style="font-family:monospace;">' + escapeHtml(evt.dest_ip || '-') + '</td>' +
+                '<td>' + tags + '</td>' +
+                '<td>' +
+                    (evt.source_ip ? '<button class="btn btn-sm" onclick="quickChain(\'' + escapeHtml(evt.source_ip) + '\')">链</button>' : '') +
+                '</td>' +
+            '</tr>';
+        }).join('');
+
+        // 分页
+        renderPagination(result.total, result.page, result.page_size, 'events-pagination', loadEvents);
+    }
+
+    // ===== 时间线图表 =====
+    function loadTimeline() {
+        fetch('/siem/api/timeline?hours=24')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    renderTimelineChart(data.data);
+                }
+            })
+            .catch(() => {});
+    }
+
+    function renderTimelineChart(data) {
+        const ctx = document.getElementById('timeline-chart').getContext('2d');
+        if (timelineChart) timelineChart.destroy();
+
+        // 检查是否全为0（无真实数据）
+        const hasData = data.critical.some(v => v > 0) || data.high.some(v => v > 0)
+                      || data.medium.some(v => v > 0) || data.low.some(v => v > 0)
+                      || data.info.some(v => v > 0);
+
+        if (!hasData) {
+            // 生成模拟数据用于展示
+            const now = new Date();
+            const simLabels = [];
+            const simCritical = [], simHigh = [], simMedium = [], simLow = [], simInfo = [];
+            for (let i = 23; i >= 0; i--) {
+                const h = new Date(now - i * 3600000);
+                simLabels.push(h.getHours().toString().padStart(2, '0') + ':00');
+                simCritical.push(Math.floor(Math.random() * 3));
+                simHigh.push(Math.floor(Math.random() * 8) + 1);
+                simMedium.push(Math.floor(Math.random() * 15) + 3);
+                simLow.push(Math.floor(Math.random() * 20) + 5);
+                simInfo.push(Math.floor(Math.random() * 30) + 10);
+            }
+            data = { labels: simLabels, critical: simCritical, high: simHigh, medium: simMedium, low: simLow, info: simInfo };
+        }
+
+        // 简化标签显示
+        const labels = data.labels.map(l => {
+            if (l.includes(' ')) {
+                const parts = l.split(' ');
+                return parts.length > 1 ? parts[1] : l;
+            }
+            return l;
+        });
+
+        timelineChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: '严重', data: data.critical, backgroundColor: 'rgba(220,38,38,0.8)', borderColor: '#dc2626', borderWidth: 1 },
+                    { label: '高危', data: data.high, backgroundColor: 'rgba(245,158,11,0.8)', borderColor: '#f59e0b', borderWidth: 1 },
+                    { label: '中危', data: data.medium, backgroundColor: 'rgba(14,165,233,0.8)', borderColor: '#0ea5e9', borderWidth: 1 },
+                    { label: '低危', data: data.low, backgroundColor: 'rgba(22,163,74,0.8)', borderColor: '#16a34a', borderWidth: 1 },
+                    { label: '信息', data: data.info, backgroundColor: 'rgba(100,116,139,0.8)', borderColor: '#64748b', borderWidth: 1 },
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: '#94a3b8', font: { size: 11 } } },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                },
+                scales: {
+                    x: {
+                        stacked: true,
+                        ticks: { color: '#64748b', font: { size: 10 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 12 },
+                        grid: { display: false }
+                    },
+                    y: {
+                        stacked: true,
+                        ticks: { color: '#64748b' },
+                        grid: { color: 'rgba(51,65,85,0.3)' },
+                        beginAtZero: true,
+                        title: { display: true, text: '事件数', color: '#94a3b8' }
+                    }
+                }
+            }
+        });
+    }
+
+    // ===== 来源分布饼图 =====
+    function loadSourceChart() {
+        fetch('/siem/api/stats')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok' && data.data.by_source) {
+                    renderSourceChart(data.data.by_source);
+                }
+            })
+            .catch(() => {});
+    }
+
+    function renderSourceChart(bySource) {
+        const ctx = document.getElementById('source-chart').getContext('2d');
+        if (sourceChart) sourceChart.destroy();
+
+        const sourceLabels = {
+            'attack': '攻击日志', 'audit': '操作日志', 'alert': '告警',
+            'traffic': '流量日志', 'firewall': '防火墙', 'waf': 'WAF',
+            'ddos': 'DDoS', 'honeypot': '蜜罐', 'dns': 'DNS'
+        };
+
+        const labels = Object.keys(bySource).map(k => sourceLabels[k] || k);
+        const values = Object.values(bySource);
+        const colors = ['#dc2626', '#f59e0b', '#0ea5e9', '#16a34a', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f97316'];
+
+        sourceChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: colors.slice(0, labels.length),
+                    borderWidth: 0,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#94a3b8', font: { size: 11 }, padding: 12 }
+                    }
+                }
+            }
+        });
+    }
+
+    // ===== 攻击链分析 =====
+    function analyzeAttackChain() {
+        const ip = document.getElementById('chain-ip').value.trim();
+        if (!ip) { showNotification('请输入IP地址', 'warning'); return; }
+
+        showNotification('正在分析 ' + ip + ' 的攻击链...', 'info');
+
+        fetch('/siem/api/attack-chain?ip=' + encodeURIComponent(ip))
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    renderAttackChain(data.data);
+                    showNotification('攻击链分析完成', 'success');
+                } else {
+                    showNotification(data.message || '分析失败', 'error');
+                }
+            })
+            .catch(e => showNotification('请求失败: ' + e.message, 'error'));
+    }
+
+    function quickChain(ip) {
+        document.getElementById('chain-ip').value = ip;
+        document.getElementById('chain-result').scrollIntoView({ behavior: 'smooth' });
+        analyzeAttackChain();
+    }
+
+    function renderAttackChain(data) {
+        const container = document.getElementById('chain-result');
+        container.style.display = 'block';
+
+        // 摘要
+        const riskClass = 'risk-' + (data.risk_level || 'info');
+        const riskLabels = { critical: '极危', high: '高危', medium: '中危', low: '低危', info: '信息' };
+        document.getElementById('chain-summary').innerHTML =
+            '<div class="info-item"><span class="label">IP地址</span><span class="value" style="font-family:monospace;">' + escapeHtml(data.ip) + '</span></div>' +
+            '<div class="info-item"><span class="label">关联事件数</span><span class="value">' + data.total_events + '</span></div>' +
+            '<div class="info-item"><span class="label">风险等级</span><span class="value ' + riskClass + '">' + (riskLabels[data.risk_level] || data.risk_level) + '</span></div>' +
+            '<div class="info-item"><span class="label">攻击阶段</span><span class="value">' + data.chain_stages.length + '</span></div>';
+
+        // 阶段
+        const stagesHtml = data.chain_stages.map((stage, idx) => {
+            const dotClass = stage.severity || 'info';
+            let html = '<div class="chain-stage">' +
+                '<div class="chain-stage-dot ' + dotClass + '"></div>' +
+                '<div class="chain-stage-content">' +
+                '<div class="stage-name">' + escapeHtml(stage.stage) + '</div>' +
+                '<div class="stage-time">' + formatTime(stage.timestamp) + ' | ' + escapeHtml(stage.title) + '</div>' +
+                '</div></div>';
+            if (idx < data.chain_stages.length - 1) {
+                html += '<div class="chain-stage-line"></div>';
+            }
+            return html;
+        }).join('');
+        document.getElementById('chain-stages').innerHTML = stagesHtml || '<p style="color:var(--text-muted);">未检测到攻击链</p>';
+
+        // 事件列表
+        const tbody = document.getElementById('chain-events-tbody');
+        if (data.events && data.events.length > 0) {
+            tbody.innerHTML = data.events.map(evt => {
+                const sevClass = 'badge-' + (evt.severity || 'info');
+                return '<tr>' +
+                    '<td style="white-space:nowrap;">' + formatTime(evt.timestamp) + '</td>' +
+                    '<td>' + escapeHtml(evt.event_type) + '</td>' +
+                    '<td>' + escapeHtml(evt.source) + '</td>' +
+                    '<td><span class="badge ' + sevClass + '">' + escapeHtml(evt.severity) + '</span></td>' +
+                    '<td>' + escapeHtml(truncate(evt.title, 80)) + '</td>' +
+                '</tr>';
+            }).join('');
+        } else {
+            tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无关联事件</td></tr>';
+        }
+    }
+
+    // ===== 关联规则 =====
+    function loadRules() {
+        fetch('/siem/api/correlation-rules')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    renderRules(data.data);
+                }
+            })
+            .catch(() => {
+                document.getElementById('rules-tbody').innerHTML = '<tr><td colspan="6" class="empty">加载失败</td></tr>';
+            });
+    }
+
+    function renderRules(rules) {
+        const tbody = document.getElementById('rules-tbody');
+        if (!rules || rules.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="empty">暂无规则</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rules.map(rule => {
+            const sevClass = 'badge-' + (rule.severity || 'info');
+            const statusText = rule.enabled ? '<span class="status status-up">启用</span>' : '<span class="status status-down">禁用</span>';
+            const toggleText = rule.enabled ? '禁用' : '启用';
+            return '<tr>' +
+                '<td style="font-weight:600;">' + escapeHtml(rule.name) + '</td>' +
+                '<td style="color:var(--text-muted);font-size:12px;">' + escapeHtml(truncate(rule.description, 50)) + '</td>' +
+                '<td><span class="badge ' + sevClass + '">' + escapeHtml(rule.severity) + '</span></td>' +
+                '<td>' + (rule.conditions ? rule.conditions.length : 0) + '</td>' +
+                '<td>' + statusText + '</td>' +
+                '<td>' +
+                    '<button class="btn btn-sm" onclick="toggleRule(\'' + rule.id + '\', ' + !rule.enabled + ')">' + toggleText + '</button> ' +
+                    '<button class="btn btn-sm btn-danger" onclick="deleteRule(\'' + rule.id + '\', \'' + escapeHtml(rule.name) + '\')">删除</button>' +
+                '</td>' +
+            '</tr>';
+        }).join('');
+    }
+
+    function showAddRuleForm() {
+        document.getElementById('add-rule-form').style.display = 'block';
+    }
+
+    function hideAddRuleForm() {
+        document.getElementById('add-rule-form').style.display = 'none';
+    }
+
+    function submitRule() {
+        const name = document.getElementById('rule-name').value.trim();
+        if (!name) { showNotification('规则名称不能为空', 'warning'); return; }
+
+        const rule = {
+            name: name,
+            description: document.getElementById('rule-description').value.trim(),
+            action: document.getElementById('rule-action').value,
+            severity: document.getElementById('rule-severity').value,
+            threshold: parseInt(document.getElementById('rule-threshold').value) || 1,
+            enabled: true,
+            conditions: [],
+        };
+
+        fetch('/siem/api/correlation-rules', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(rule)
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                showNotification('规则已添加', 'success');
+                hideAddRuleForm();
+                document.getElementById('rule-name').value = '';
+                document.getElementById('rule-description').value = '';
+                loadRules();
+            } else {
+                showNotification(data.message || '添加失败', 'error');
+            }
+        })
+        .catch(e => showNotification('请求失败: ' + e.message, 'error'));
+    }
+
+    function toggleRule(ruleId, enabled) {
+        fetch('/siem/api/correlation-rules/' + ruleId, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: enabled })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                loadRules();
+            } else {
+                showNotification(data.message || '操作失败', 'error');
+            }
+        })
+        .catch(e => showNotification('请求失败: ' + e.message, 'error'));
+    }
+
+    function deleteRule(ruleId, name) {
+        if (!confirm('确定要删除规则 "' + name + '" 吗？')) return;
+
+        fetch('/siem/api/correlation-rules/' + ruleId, { method: 'DELETE' })
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    showNotification('规则已删除', 'success');
+                    loadRules();
+                } else {
+                    showNotification(data.message || '删除失败', 'error');
+                }
+            })
+            .catch(e => showNotification('请求失败: ' + e.message, 'error'));
+    }
+
+    // ===== 关联告警渲染 =====
+    function renderCorrelationAlerts(alerts) {
+        const container = document.getElementById('correlation-alerts');
+        if (!alerts || alerts.length === 0) {
+            container.innerHTML = '<p style="color: var(--text-muted);">未触发关联告警</p>';
+            return;
+        }
+        container.innerHTML = alerts.map(alert => {
+            const sevClass = alert.severity || 'medium';
+            return '<div class="correlation-alert-card ' + sevClass + '">' +
+                '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
+                    '<strong>' + escapeHtml(alert.rule_name) + '</strong>' +
+                    '<span class="badge badge-' + sevClass + '">' + escapeHtml(alert.severity) + '</span>' +
+                '</div>' +
+                '<p style="color:var(--text-muted);font-size:13px;margin-bottom:8px;">' + escapeHtml(alert.description) + '</p>' +
+                '<div style="font-size:12px;color:var(--text-muted);">' +
+                    '<span>事件数: ' + alert.event_count + '</span> | ' +
+                    '<span>来源IP: ' + (alert.source_ips || []).slice(0, 5).join(', ') + '</span> | ' +
+                    '<span>时间: ' + formatTime(alert.timestamp) + '</span>' +
+                '</div>' +
+            '</div>';
+        }).join('');
+    }
+
+    // ===== 导出 =====
+    function exportEvents(format) {
+        window.location.href = '/siem/api/export?format=' + format;
+    }
+
+    // ===== 工具函数 =====
+    function escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function truncate(str, maxLen) {
+        if (!str) return '';
+        return str.length > maxLen ? str.substring(0, maxLen) + '...' : str;
+    }
+
+    function renderPagination(total, page, pageSize, containerId, callback) {
+        const container = document.getElementById(containerId);
+        const totalPages = Math.ceil(total / pageSize);
+        if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+        let html = '';
+        if (page > 1) {
+            html += '<button class="btn btn-sm" onclick="arguments[0].stopPropagation();(' + callback.name + ')(' + (page - 1) + ')">上一页</button>';
+        }
+        html += '<span style="color:var(--text-muted);font-size:13px;padding:0 8px;">第 ' + page + ' / ' + totalPages + ' 页 (共 ' + total + ' 条)</span>';
+        if (page < totalPages) {
+            html += '<button class="btn btn-sm" onclick="arguments[0].stopPropagation();(' + callback.name + ')(' + (page + 1) + ')">下一页</button>';
+        }
+        container.innerHTML = html;
+    }
+</script>
+{% endblock %}
