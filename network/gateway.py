@@ -1772,54 +1772,71 @@ no-resolv
 
     def get_status(self) -> Dict:
         """获取网关状态"""
-        status = {
-            "enabled": self._config.enabled,
-            "running": self._running,
-            "wan_interface": self._config.wan_interface,
-            "lan_interface": self._config.lan_interface,
-            "lan_network": self._config.lan_network,
-            "lan_gateway": self._config.lan_gateway,
-            "dhcp": {
-                "enabled": self._config.dhcp_enabled,
-                "range": f"{self._config.dhcp_start} - {self._config.dhcp_end}",
-                "lease_time": self._config.dhcp_lease_time,
-                "active_leases": 0,
-            },
-            "dns": {
-                "enabled": self._config.dns_enabled,
-                "upstream": self._config.dns_upstream
-            },
-            "nat_rules": len(self._nat_rules),
-            "port_forwards": [
-                {
-                    "name": name,
-                    "type": rule.nat_type.value,
-                    "external_port": rule.dest_port,
-                    "protocol": rule.protocol,
-                    "destination": rule.to_destination
-                }
-                for name, rule in self._nat_rules.items()
-                if rule.nat_type == NATType.DNAT
-            ]
-        }
-
-        # 安全获取DHCP租约数
         try:
-            status["dhcp"]["active_leases"] = len(self.get_dhcp_leases())
-        except Exception:
-            pass
+            status = {
+                "enabled": self._config.enabled,
+                "running": self._running,
+                "wan_interface": self._config.wan_interface,
+                "lan_interface": self._config.lan_interface,
+                "lan_network": self._config.lan_network,
+                "lan_gateway": self._config.lan_gateway,
+                "dhcp": {
+                    "enabled": self._config.dhcp_enabled,
+                    "range": f"{self._config.dhcp_start} - {self._config.dhcp_end}",
+                    "lease_time": self._config.dhcp_lease_time,
+                    "active_leases": 0,
+                },
+                "dns": {
+                    "enabled": self._config.dns_enabled,
+                    "upstream": self._config.dns_upstream
+                },
+                "nat_rules": 0,
+                "port_forwards": [],
+            }
 
-        # 检查IP转发状态
-        try:
-            result = subprocess.run(
-                ["sysctl", "-n", "net.ipv4.ip_forward"],
-                capture_output=True, text=True, timeout=10
-            )
-            status["ip_forward"] = result.stdout.strip() == "1"
-        except:
-            status["ip_forward"] = False
+            # NAT规则统计
+            try:
+                status["nat_rules"] = len(self._nat_rules)
+                status["port_forwards"] = [
+                    {
+                        "name": name,
+                        "type": str(rule.nat_type.value) if hasattr(rule.nat_type, 'value') else str(rule.nat_type),
+                        "external_port": rule.dest_port,
+                        "protocol": rule.protocol,
+                        "destination": rule.to_destination
+                    }
+                    for name, rule in self._nat_rules.items()
+                    if rule.nat_type == NATType.DNAT
+                ]
+            except Exception:
+                pass
 
-        return status
+            # 安全获取DHCP租约数
+            try:
+                status["dhcp"]["active_leases"] = len(self.get_dhcp_leases())
+            except Exception:
+                pass
+
+            # 检查IP转发状态
+            try:
+                result = subprocess.run(
+                    ["sysctl", "-n", "net.ipv4.ip_forward"],
+                    capture_output=True, text=True, timeout=10
+                )
+                status["ip_forward"] = result.stdout.strip() == "1"
+            except Exception:
+                status["ip_forward"] = False
+
+            return status
+        except Exception as e:
+            logger.error("获取网关状态异常: %s", e)
+            return {
+                "enabled": False,
+                "running": False,
+                "wan_interface": "",
+                "lan_interface": "",
+                "error": str(e),
+            }
 
     def get_interfaces(self) -> List[Dict]:
         """获取网络接口列表"""
