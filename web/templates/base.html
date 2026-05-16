@@ -472,6 +472,9 @@
             document.querySelectorAll('.nav-menu a').forEach(function(a) { a.classList.remove('active'); });
             link.classList.add('active');
 
+            // 记录导航审计日志
+            recordNavAction(link.textContent.trim(), href);
+
             // 移动端关闭侧边栏
             if (window.innerWidth <= 1024) {
                 var sidebar = document.getElementById('sidebar');
