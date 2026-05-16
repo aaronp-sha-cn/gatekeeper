@@ -303,7 +303,7 @@ mkdir -p /etc/iptables
 # Install iptables-persistent to persist rules across reboots
 echo "iptables-persistent iptables-persistent/autosave_v4 boolean true" | debconf-set-selections 2>/dev/null || true
 echo "iptables-persistent iptables-persistent/autosave_v6 boolean true" | debconf-set-selections 2>/dev/null || true
-apt-get install -y iptables-persistent 2>&1 | tee -a "$LOG_FILE" || true
+apt-get install -y -o DPkg::Options::="--force-confdef" -o DPkg::Options::="--force-confold" iptables-persistent 2>&1 | tee -a "$LOG_FILE" || true
 
 # Add ACCEPT rules first (before setting DROP policy, to prevent lockout from race conditions)
 iptables -I INPUT 1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
@@ -372,9 +372,9 @@ chown -R root:root /opt/gatekeeper
 
 if [ $PIP_SUCCESS -eq 1 ]; then
     # Generate random passwords and write to credentials file (must be before systemctl start)
-    SP_PASS=$(python3 -c "import secrets; import string; a=string.ascii_letters+string.digits+'!@%&*'; print(''.join(secrets.choice(a) for _ in range(16)))")
-    ADMIN_PASS=$(python3 -c "import secrets; import string; a=string.ascii_letters+string.digits+'!@%&*'; print(''.join(secrets.choice(a) for _ in range(16)))")
-    ROOT_PASS=$(python3 -c "import secrets; import string; a=string.ascii_letters+string.digits+'!@%&*'; print(''.join(secrets.choice(a) for _ in range(16)))")
+    SP_PASS=$(/opt/gatekeeper/venv/bin/python3 -c "import secrets; import string; a=string.ascii_letters+string.digits+'!@%&*'; print(''.join(secrets.choice(a) for _ in range(16)))" 2>/dev/null || echo "SpPass$(date +%s)!")
+    ADMIN_PASS=$(/opt/gatekeeper/venv/bin/python3 -c "import secrets; import string; a=string.ascii_letters+string.digits+'!@%&*'; print(''.join(secrets.choice(a) for _ in range(16)))" 2>/dev/null || echo "AdminPass$(date +%s)!")
+    ROOT_PASS=$(/opt/gatekeeper/venv/bin/python3 -c "import secrets; import string; a=string.ascii_letters+string.digits+'!@%&*'; print(''.join(secrets.choice(a) for _ in range(16)))" 2>/dev/null || echo "RootPass$(date +%s)!")
     (umask 077; cat > /opt/gatekeeper/.initial_credentials << CRED_EOF
 admin-sp:${SP_PASS}
 admin:${ADMIN_PASS}
