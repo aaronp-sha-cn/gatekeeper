@@ -12,7 +12,7 @@ except FileNotFoundError:
 
 setup(
     name="gatekeeper",
-    version="1.0.4",
+    version="1.1.0",
     description="AI安全网络防御系统 - 智能网络安全防御平台",
     long_description=long_description,
     long_description_content_type="text/markdown",

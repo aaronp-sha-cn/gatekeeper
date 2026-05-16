@@ -1976,6 +1976,30 @@ class WAFEngine:
 
         self._logs.append(log_entry)
 
+    def get_logs(self, page=1, per_page=20):
+        """
+        获取WAF日志（分页，从最新到最旧排序）
+
+        Args:
+            page: 页码（从1开始）
+            per_page: 每页条数
+
+        Returns:
+            dict: {"logs": [...], "total": N, "page": page, "per_page": per_page}
+        """
+        total = len(self._logs)
+        # deque 从最新到最旧排序（reverse）
+        all_logs = list(reversed(self._logs))
+        start = (page - 1) * per_page
+        end = start + per_page
+        page_logs = all_logs[start:end]
+        return {
+            "logs": page_logs,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+        }
+
     def add_rule(self, name: str, rule_type: str, pattern: str,
                  action: str = "block", severity: str = "high",
                  description: str = "", enabled: bool = True) -> WAFRule:

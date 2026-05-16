@@ -143,7 +143,8 @@ def remove_wan(wan_id):
 def toggle_wan(wan_id):
     """启用/禁用WAN接口"""
     try:
-        enabled = request.json.get("enabled", True)
+        data = request.get_json(silent=True) or {}
+        enabled = data.get("enabled", True)
         manager = get_dual_wan()
         result = manager.update_wan_interface(wan_id, enabled=enabled)
         
@@ -240,7 +241,8 @@ def remove_policy(rule_id):
 def toggle_policy(rule_id):
     """启用/禁用策略路由规则"""
     try:
-        enabled = request.json.get("enabled", True)
+        data = request.get_json(silent=True) or {}
+        enabled = data.get("enabled", True)
         manager = get_dual_wan()
         result = manager.toggle_policy_rule(rule_id, enabled)
         

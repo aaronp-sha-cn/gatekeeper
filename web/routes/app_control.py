@@ -231,7 +231,7 @@ def export_apps():
         blocked_ids = set(detector.get_blocked_apps())
 
         export_data = {
-            "version": "1.0",
+            "version": "1.1.0",
             "exported_at": __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "total": len(apps),
             "apps": []

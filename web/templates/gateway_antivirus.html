@@ -467,10 +467,24 @@ function escapeHtml(str) {
         var proto = currentConfigProtocol;
         var payload = {};
 
-        // 收集表单值
+        // 前端字段名 -> 后端字段名映射
+        var fieldMapping = {
+            'http-listen-port': 'listen_port',
+            'ftp-listen-port': 'listen_port',
+            'smtp-domain': 'domain',
+            'smtp-hostname': 'hostname',
+            'smb-workgroup': 'workgroup',
+            'smb-share-name': 'share_name',
+            'smb-share-path': 'share_path'
+        };
+
+        // 收集表单值，使用映射后的字段名
         protocolConfigForms[proto].fields.forEach(function(f) {
             var el = document.getElementById(f.id);
-            if (el) payload[f.id] = el.value;
+            if (el) {
+                var key = fieldMapping[f.id] || f.id;
+                payload[key] = el.value;
+            }
         });
 
         toast('正在保存 ' + proto.toUpperCase() + ' 配置...', 'info');

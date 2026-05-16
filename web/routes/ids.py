@@ -317,14 +317,18 @@ def config():
     engine = get_ids_engine()
     
     if request.method == 'GET':
-        return jsonify({
-            'status': 'ok',
-            'data': {
-                'auto_block': engine.auto_block,
-                'block_threshold': engine.block_threshold,
-                'block_duration': engine.block_duration
-            }
-        })
+        try:
+            return jsonify({
+                'status': 'ok',
+                'data': {
+                    'auto_block': engine.auto_block,
+                    'block_threshold': engine.block_threshold,
+                    'block_duration': engine.block_duration
+                }
+            })
+        except Exception as e:
+            logger.error(f"获取IDS配置失败: {e}")
+            return jsonify(_safe_error_message(e)), 500
     
     # POST - 更新配置
     try:

@@ -7,27 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.1.0] - 2026-05-15
+## [1.1.0] - 2026-05-16
 
 ### Added
 - **ISO 安装支持**: 新增 Debian 10 (Buster) ISO 一键安装，支持 BIOS 和 UEFI 双启动模式。
 - **Preseed 自动化**: 使用 preseed.cfg 实现全自动化 Debian 安装，使用 archive.debian.org 镜像源。
-- **首次登录密码修改**: login.html 新增密码修改表单，支持 `must_change_password` 状态处理。
-- **密码强度实时验证**: 密码修改表单实时显示密码复杂度要求（长度、大小写、数字、特殊字符）。
-- **CSRF Token 支持**: gateway_antivirus.html 的 apiPost 函数自动携带 CSRF token。
-- **延迟导入保护**: core/app.py 新增 `_lazy_import()` 函数，模块导入失败时不会导致系统崩溃。
-- **EnvironmentFile 支持**: systemd 服务通过 EnvironmentFile 传递初始密码。
+- **Plymouth 启动画面**: 系统启动时显示 GateKeeper 品牌背景 + 进度条，GRUB 菜单显示品牌背景图。
+- **QoS 默认规则**: 初始化时自动加载 8 条默认 QoS 规则（VoIP/DNS/SSH/HTTP 等优先级策略）。
+- **应用管控导出/导入**: 支持将应用列表（含阻断状态）导出为 JSON 文件，以及从 JSON 文件导入。
+- **系统备份菜单**: 侧边栏"系统管理"分组下新增"系统备份"入口。
+- **全局 fetch 超时**: 所有 API 请求超过 15 秒自动中止，防止前端永久"加载中..."。
+- **HTML 响应检测**: API 返回 HTML（会话过期）时自动跳转登录页。
+- **审计日志记录导航**: PJAX 导航时自动记录模块访问审计日志。
+- **内容安全说明**: 文件扫描区域添加说明，区分本机扫描与网关防病毒。
+- **协议扫描器自动安装**: 启动服务时自动检测并安装缺失的系统包（squid/c-icap/clamav 等）。
+- **mitmproxy 自动安装**: SSL 检查模块启动时自动安装 mitmproxy。
+- **FRRouting 自动安装**: 动态路由模块启动时自动安装 FRR。
+- **WAF 日志查询**: WAFEngine 新增 get_logs() 方法，支持分页查询 WAF 拦截日志。
 
 ### Changed
 - **目标平台**: 从 Debian 12 / Python 3.10+ 降级为 Debian 10 / Python 3.7+。
-- **UserRole 枚举**: 枚举值从小写（`super_admin`）改为大写（`SUPER_ADMIN`），兼容数据库存储。
 - **Web 端口**: 默认端口从 8080 改为 8443。
 - **安装方式**: 新增 ISO 安装为推荐安装方式。
+- **UserRole 枚举**: 枚举值从小写改为大写（SUPER_ADMIN），兼容数据库存储。
+- **版本号统一**: settings.py / setup.py / app_control.py 版本号统一为 1.1.0。
 
 ### Fixed
-- **CSRF 拦截登录**: 对 auth 蓝图豁免 CSRF 检查，修复登录请求被拦截返回 HTTP 400 的问题。
-- **CSRF 拦截密码修改**: 对 change-password 接口豁免 CSRF 检查，修复首次登录修改密码失败的问题。
-- **CSRF 拦截病毒库更新**: gateway_antivirus.html 的 apiPost 函数添加 X-CSRFToken 请求头。
+- **subprocess 超时**: 所有 subprocess.run 调用添加 timeout=10，防止命令挂起导致 API 无响应。
+- **WAF 规则不显示**: get_rules() 返回 WAFRule 对象改为 to_dict() 序列化。
+- **网关状态加载失败**: get_status() 整体异常保护，NAT 规则安全序列化。
+- **SMB 启动 HTTP 500**: configure() 中 os.makedirs 移入 try-except。
+- **SMTP 配置保存失败**: 响应添加 status 字段。
+- **网关防病毒配置不生效**: 前端字段名映射为后端期望的名称。
+- **c-icap 启动失败**: 启动前自动生成配置文件，包名拆分为独立列表。
+- **IDS/Gateway API 异常**: 多个 GET 端点添加 try-except 保护。
+- **dual_wan AttributeError**: request.json.get 改为 get_json(silent=True) 安全获取。
+- **limiter 初始化**: 添加容错和 storage_uri 配置。
+- **运行时间错误**: 每次页面加载与服务器 boot_time 对比，防止缓存过期。
+- **侧边栏滚动重置**: 使用 requestAnimationFrame 延迟恢复 scrollTop。
+- **CSRF 拦截**: 对 auth/change-password 豁免 CSRF 检查。
 - **flask_limiter 导入失败**: 将 flask_limiter 改为可选依赖（try/except），未安装时跳过速率限制。
 - **mitmproxy 兼容性**: 注释掉 mitmproxy 依赖（需要 Python 3.8+，Debian 10 默认 3.7）。
 - **DetachedInstanceError**: auth.py 登录成功后调用 session.expunge(user) 防止会话关闭后访问属性报错。

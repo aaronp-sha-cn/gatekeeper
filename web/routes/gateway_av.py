@@ -269,7 +269,7 @@ def api_smtp_configure():
         hostname = data.get("hostname", "mail")
         result1 = scanner.configure_postfix(domain=domain, hostname=hostname)
         result2 = scanner.configure_amavis()
-        return jsonify({"postfix": result1, "amavis": result2})
+        return jsonify({"status": "ok", "postfix": result1, "amavis": result2})
     except Exception as e:
         error_id = _log_error("配置 SMTP 扫描器失败", e)
         return jsonify({"status": "error", "message": f"配置失败，错误ID: {error_id}"}), 500

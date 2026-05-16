@@ -103,16 +103,20 @@ def dhcp_config():
     manager = get_gateway_manager()
 
     if request.method == "GET":
-        return jsonify({
-            "status": "ok",
-            "data": {
-                "enabled": manager.config.dhcp_enabled,
-                "start_ip": manager.config.dhcp_start,
-                "end_ip": manager.config.dhcp_end,
-                "lease_time": manager.config.dhcp_lease_time,
-                "dns_servers": manager.config.dns_upstream
-            }
-        })
+        try:
+            return jsonify({
+                "status": "ok",
+                "data": {
+                    "enabled": manager.config.dhcp_enabled,
+                    "start_ip": manager.config.dhcp_start,
+                    "end_ip": manager.config.dhcp_end,
+                    "lease_time": manager.config.dhcp_lease_time,
+                    "dns_servers": manager.config.dns_upstream
+                }
+            })
+        except Exception as e:
+            logger.error(f"获取DHCP配置失败: {e}")
+            return jsonify(_safe_error_message(e)), 500
 
     # POST - 更新配置
     try:
@@ -148,13 +152,17 @@ def dns_config():
     manager = get_gateway_manager()
 
     if request.method == "GET":
-        return jsonify({
-            "status": "ok",
-            "data": {
-                "enabled": manager.config.dns_enabled,
-                "upstream": manager.config.dns_upstream
-            }
-        })
+        try:
+            return jsonify({
+                "status": "ok",
+                "data": {
+                    "enabled": manager.config.dns_enabled,
+                    "upstream": manager.config.dns_upstream
+                }
+            })
+        except Exception as e:
+            logger.error(f"获取DNS配置失败: {e}")
+            return jsonify(_safe_error_message(e)), 500
 
     # POST - 更新配置
     try:
@@ -175,8 +183,12 @@ def port_forward():
     manager = get_gateway_manager()
 
     if request.method == "GET":
-        status = manager.get_status()
-        return jsonify({"status": "ok", "data": status.get("port_forwards", [])})
+        try:
+            status = manager.get_status()
+            return jsonify({"status": "ok", "data": status.get("port_forwards", [])})
+        except Exception as e:
+            logger.error(f"获取端口转发列表失败: {e}")
+            return jsonify(_safe_error_message(e)), 500
 
     # POST - 添加端口转发
     try:
