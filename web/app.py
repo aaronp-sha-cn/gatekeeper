@@ -186,12 +186,18 @@ def _init_limiter(app: Flask):
         logger.warning("flask_limiter 未安装，跳过速率限制配置")
         app.limiter = None
         return
-    limiter = Limiter(
-        app=app,
-        key_func=get_remote_address,
-        default_limits=["200 per minute"],
-    )
-    app.limiter = limiter
+    try:
+        limiter = Limiter(
+            app=app,
+            key_func=lambda: request.remote_addr or "127.0.0.1",
+            default_limits=["200 per minute"],
+            storage_uri="memory://",
+        )
+        app.limiter = limiter
+        logger.info("速率限制已启用 (200/min)")
+    except Exception as e:
+        logger.warning("flask_limiter 初始化失败，跳过速率限制: {}".format(e))
+        app.limiter = None
 
 
 def _init_login_manager(app: Flask):
