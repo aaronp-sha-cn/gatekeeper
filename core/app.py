@@ -280,13 +280,17 @@ class GateKeeper:
                 else:
                     logger.info("  默认超级管理员已存在")
 
-                # 如果环境变量设置了新密码，更新已存在用户的密码
+                # 仅当用户尚未修改过密码时（must_change_password=True），
+                # 才从环境变量更新密码，防止重启后覆盖用户已修改的密码
                 env_sp_password = os.environ.get("GK_ADMIN_SP_PASSWORD")
-                if env_sp_password:
+                if env_sp_password and getattr(sp, 'must_change_password', False):
                     sp.password_hash = hash_password(env_sp_password)
                     sp.must_change_password = True
                     _write_credentials("admin-sp", env_sp_password)
                     logger.info("  admin-sp 密码已从环境变量更新")
+                elif env_sp_password and not getattr(sp, 'must_change_password', False):
+                    # 用户已修改过密码，清除环境变量文件防止后续重启干扰
+                    logger.info("  admin-sp 密码已被用户修改，跳过环境变量密码")
 
             # 普通管理员账号
             admin = session.query(User).filter_by(username="admin").first()
@@ -312,13 +316,16 @@ class GateKeeper:
                     admin.role = UserRole.ADMIN
                     logger.info("  admin 角色已调整为管理员")
 
-                # 如果环境变量设置了新密码，更新已存在用户的密码
+                # 仅当用户尚未修改过密码时（must_change_password=True），
+                # 才从环境变量更新密码，防止重启后覆盖用户已修改的密码
                 env_admin_password = os.environ.get("GK_ADMIN_PASSWORD")
-                if env_admin_password:
+                if env_admin_password and getattr(admin, 'must_change_password', False):
                     admin.password_hash = hash_password(env_admin_password)
                     admin.must_change_password = True
                     _write_credentials("admin", env_admin_password)
                     logger.info("  admin 密码已从环境变量更新")
+                elif env_admin_password and not getattr(admin, 'must_change_password', False):
+                    logger.info("  admin 密码已被用户修改，跳过环境变量密码")
                 else:
                     logger.info("  默认管理员已存在")
 
