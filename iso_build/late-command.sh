@@ -239,7 +239,53 @@ else
     echo "[GateKeeper] WARNING: postinstall.sh not found, skipping"
 fi
 
-# 8. Cleanup temp files
+# 9. Branding: hostname, login prompt, MOTD
+echo "[GateKeeper] Applying branding..."
+
+# Set hostname
+echo "gatekeeper" > /target/etc/hostname
+sed -i 's/127.0.1.1.*/127.0.1.1\tgatekeeper/' /target/etc/hosts
+
+# Login prompt: replace "Debian GNU/Linux 10" with GateKeeper branding
+if [ -f /target/etc/issue ]; then
+    cat > /target/etc/issue << 'ISSUE_EOF'
+GateKeeper - AI Security Network Defense System
+Kernel \r on an \m (\l)
+
+ISSUE_EOF
+fi
+if [ -f /target/etc/issue.net ]; then
+    echo "GateKeeper - AI Security Network Defense System" > /target/etc/issue.net
+fi
+
+# SSH banner
+if [ -f /target/etc/ssh/sshd_config ]; then
+    sed -i 's/^#\?Banner .*/Banner \/etc\/issue.net/' /target/etc/ssh/sshd_config
+fi
+
+# MOTD (Message of the Day)
+cat > /target/etc/motd << 'MOTD_EOF'
+
+  ███████╗██╗  ██╗ █████╗ ██████╗  ██████╗ ██╗    ██╗
+  ██╔════╝██║  ██║██╔══██╗██╔══██╗██╔═══██╗██║    ██║
+  ███████╗███████║███████║██║  ██║██║   ██║██║ █╗ ██║
+  ╚════██║██╔══██║██╔══██║██║  ██║██║   ██║██║███╗██║
+  ███████║██║  ██║██║  ██║██████╔╝╚██████╔╝╚███╔███╔╝
+  ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝  ╚═════╝  ╚══╝╚══╝
+
+  GateKeeper - AI Security Network Defense System v1.1.0
+
+  Web Interface: https://\4: \n
+  Documentation: /opt/gatekeeper/docs/
+
+MOTD_EOF
+
+# Clear default Debian MOTD snippets
+rm -f /target/etc/motd.d/* 2>/dev/null || true
+
+echo "[GateKeeper] Branding applied"
+
+# 10. Cleanup temp files
 rm -f /target/tmp/gatekeeper.tar.gz
 
 echo "[GateKeeper] late_command: Done"
