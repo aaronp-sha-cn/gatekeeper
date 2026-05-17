@@ -296,6 +296,17 @@ def api_change_password():
             user.password_hash = hash_password(new_password)
             user.must_change_password = False
 
+            # 密码修改成功后，删除初始凭证环境文件，防止服务重启时重置密码
+            try:
+                import os
+                from config.settings import DATA_DIR
+                cred_env_file = os.path.join(str(DATA_DIR), ".initial_credentials.env")
+                if os.path.exists(cred_env_file):
+                    os.remove(cred_env_file)
+                    logger.info("初始凭证环境文件已删除: {}".format(cred_env_file))
+            except Exception as e:
+                logger.warning("删除初始凭证环境文件失败: {}".format(e))
+
             log_security_event(
                 user=current_user.username,
                 action="password_change",
