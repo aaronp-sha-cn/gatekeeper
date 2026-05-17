@@ -88,11 +88,12 @@ ln -sf /opt/gatekeeper/venv/bin/gk-cli /usr/local/bin/gk-cli 2>/dev/null || true
 ln -sf /opt/gatekeeper/venv/bin/gk-junos /usr/local/bin/gk-junos 2>/dev/null || true
 ln -sf /opt/gatekeeper/venv/bin/gk-cisco /usr/local/bin/gk-cisco 2>/dev/null || true
 ln -sf /opt/gatekeeper/venv/bin/gatekeeper /usr/local/bin/gatekeeper 2>/dev/null || true
-chmod +x /usr/local/bin/gk-cli /usr/local/bin/gk-junos /usr/local/bin/gk-cisco /usr/local/bin/gatekeeper 2>/dev/null || true
 
 # Fallback: if pip install -e . failed, create wrapper scripts directly
 if [ ! -f /opt/gatekeeper/venv/bin/gk-cli ]; then
     log "  pip install -e . may have failed, creating CLI wrapper scripts..."
+    # Remove broken symlinks first
+    rm -f /usr/local/bin/gk-cli /usr/local/bin/gk-junos /usr/local/bin/gk-cisco /usr/local/bin/gatekeeper 2>/dev/null || true
     cat > /usr/local/bin/gk-cli << 'GKCLI_EOF'
 #!/bin/bash
 cd /opt/gatekeeper && /opt/gatekeeper/venv/bin/python -m cli.main "$@"
@@ -104,6 +105,8 @@ GKCLI_EOF
 cd /opt/gatekeeper && /opt/gatekeeper/venv/bin/python -m cli.main "$@"
 GKEOF
     chmod +x /usr/local/bin/gatekeeper
+else
+    chmod +x /usr/local/bin/gk-cli /usr/local/bin/gk-junos /usr/local/bin/gk-cisco /usr/local/bin/gatekeeper 2>/dev/null || true
 fi
 
 log "  Junos CLI configured"
