@@ -220,17 +220,23 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
     openssl \
     2>&1 | apt_log || true
 
-/opt/gatekeeper/venv/bin/pip install --upgrade pip setuptools wheel --timeout 300 2>&1 | apt_log
+/opt/gatekeeper/venv/bin/pip install --upgrade pip setuptools wheel --timeout 300 2>&1 | apt_log || true
 
 PIP_SUCCESS=0
 for i in 1 2 3; do
     log "  Installing dependencies (attempt $i/3)..."
-    if /opt/gatekeeper/venv/bin/pip install -r /opt/gatekeeper/requirements.txt --timeout 600 --trusted-host pypi.org --trusted-host files.pythonhosted.org 2>&1 | apt_log; then
+    # 直接安装，不通过管道（避免退出码丢失）
+    /opt/gatekeeper/venv/bin/pip install -r /opt/gatekeeper/requirements.txt --timeout 600 --trusted-host pypi.org --trusted-host files.pythonhosted.org 2>&1 | tee -a "$LOG_FILE"
+    _pip_rc=${PIPESTATUS[0]}
+    if [ "$_pip_rc" -eq 0 ]; then
         PIP_SUCCESS=1
-        log "  Python dependencies installed"
+        log "  pip install -r requirements.txt succeeded (rc=$_pip_rc)"
         break
+    else
+        log "  pip install -r requirements.txt failed (rc=$_pip_rc), trying direct install..."
     fi
-    log "  pip install failed, installing core dependencies directly..."
+
+    # 后备：逐个安装（和 requirements.txt 完全一致）
     /opt/gatekeeper/venv/bin/pip install --timeout 600 --trusted-host pypi.org --trusted-host files.pythonhosted.org \
         flask \
         flask-login \
@@ -239,47 +245,54 @@ for i in 1 2 3; do
         werkzeug \
         markupsafe \
         sqlalchemy \
+        alembic \
         scapy \
+        dpkt \
         scikit-learn \
         numpy \
         pandas \
+        joblib \
+        schedule \
+        apscheduler \
+        paramiko \
+        reportlab \
+        email-validator \
         prompt-toolkit \
         psutil \
         cryptography \
-        reportlab \
-        apscheduler \
-        schedule \
-        paramiko \
         requests \
-        email-validator \
         ldap3 \
-        2>&1 | apt_log
-    if [ $? -eq 0 ]; then
+        flasgger \
+        2>&1 | tee -a "$LOG_FILE"
+    _pip_rc=${PIPESTATUS[0]}
+    if [ "$_pip_rc" -eq 0 ]; then
         PIP_SUCCESS=1
-        log "  Core dependencies installed"
-        # 验证关键包是否真的安装成功
-        log "  Verifying critical packages..."
-        _missing=0
-        for _pkg in flask sqlalchemy werkzeug markupsafe cryptography; do
-            if ! /opt/gatekeeper/venv/bin/python3 -c "import $_pkg" 2>/dev/null; then
-                log "  WARNING: $_pkg not importable!"
-                _missing=1
-            fi
-        done
-        if [ $_missing -eq 1 ]; then
-            log "  Some packages missing, retrying full install..."
-            PIP_SUCCESS=0
-        else
-            log "  All critical packages verified"
-            break
-        fi
+        log "  Direct pip install succeeded (rc=$_pip_rc)"
+        break
     fi
-    log "  pip install failed, retrying in 30s..."
+    log "  Direct install also failed (rc=$_pip_rc), retrying in 30s..."
     sleep 30
 done
 
 if [ $PIP_SUCCESS -eq 0 ]; then
-    log "  ERROR: Core dependencies installation failed after 3 attempts"
+    log "  ERROR: All pip install attempts failed after 3 retries"
+fi
+
+# 验证所有关键包是否真的安装成功
+log "  Verifying all critical packages..."
+_missing_pkgs=""
+for _pkg in flask flask_login sqlalchemy werkzeug markupsafe cryptography apscheduler flasgger; do
+    if ! /opt/gatekeeper/venv/bin/python3 -c "import $_pkg" 2>/dev/null; then
+        log "  WARNING: $_pkg not importable!"
+        _missing_pkgs="$_missing_pkgs $_pkg"
+    fi
+done
+if [ -n "$_missing_pkgs" ]; then
+    log "  Missing packages:$_missing_pkgs - attempting individual install..."
+    for _pkg in $_missing_pkgs; do
+        log "  Installing $_pkg..."
+        /opt/gatekeeper/venv/bin/pip install "$_pkg" 2>&1 | tee -a "$LOG_FILE" || true
+    done
 fi
 
 # Install project itself (register CLI entry points)
