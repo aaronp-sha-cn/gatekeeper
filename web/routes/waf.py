@@ -15,7 +15,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("waf_routes")
 
-waf_bp = Blueprint("waf", __name__, url_prefix="/waf")
+waf_bp = Blueprint("waf", __name__)
 
 
 @waf_bp.route("/")

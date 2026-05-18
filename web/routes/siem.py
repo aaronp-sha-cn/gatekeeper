@@ -19,7 +19,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("siem_routes")
 
-siem_bp = Blueprint("siem", __name__, url_prefix="/siem")
+siem_bp = Blueprint("siem", __name__)
 
 
 @siem_bp.route("/")

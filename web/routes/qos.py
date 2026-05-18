@@ -15,7 +15,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("qos_routes")
 
-qos_bp = Blueprint("qos", __name__, url_prefix="/qos")
+qos_bp = Blueprint("qos", __name__)
 
 
 @qos_bp.route("/")

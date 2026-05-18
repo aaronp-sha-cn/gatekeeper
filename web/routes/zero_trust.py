@@ -14,7 +14,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("zero_trust_routes")
 
-zta_bp = Blueprint("zero_trust", __name__, url_prefix="/zta")
+zta_bp = Blueprint("zero_trust", __name__)
 
 
 def _get_engine():

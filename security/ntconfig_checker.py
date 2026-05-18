@@ -823,9 +823,9 @@ class NTConfigChecker:
                  ai_provider: str) -> Optional[str]:
         """调用AI引擎分析配置"""
         try:
-            from ai_engine.llm_interface import get_llm_interface
+            from ai_engine.llm_provider import get_llm_provider
 
-            llm = get_llm_interface()
+            llm = get_llm_provider()
             if not llm or not llm.is_available():
                 return None
 

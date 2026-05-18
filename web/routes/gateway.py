@@ -14,7 +14,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("gateway_routes")
 
-gateway_bp = Blueprint("gateway", __name__, url_prefix="/gateway")
+gateway_bp = Blueprint("gateway", __name__)
 
 
 @gateway_bp.route("/")

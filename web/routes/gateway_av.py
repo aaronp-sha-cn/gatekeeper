@@ -4,7 +4,8 @@
 """
 
 from flask import Blueprint, jsonify, request, render_template
-from web.routes.auth import login_required, admin_required
+from flask_login import login_required
+from web.routes.auth import admin_required
 from flask_login import current_user
 from security.gateway_antivirus import get_gateway_antivirus
 from security.protocol_scanners import (

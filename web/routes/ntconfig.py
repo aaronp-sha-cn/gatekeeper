@@ -17,7 +17,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("ntconfig_routes")
 
-ntconfig_bp = Blueprint("ntconfig", __name__, url_prefix="/ntconfig")
+ntconfig_bp = Blueprint("ntconfig", __name__)
 
 
 @ntconfig_bp.route("/")

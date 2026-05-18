@@ -14,7 +14,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("web.assets")
 
-assets_bp = Blueprint("assets", __name__, url_prefix="/assets")
+assets_bp = Blueprint("assets", __name__)
 
 
 @assets_bp.route("/")

@@ -15,7 +15,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("isolation_routes")
 
-isolation_bp = Blueprint("isolation", __name__, url_prefix="/isolation")
+isolation_bp = Blueprint("isolation", __name__)
 
 
 @isolation_bp.route("/")

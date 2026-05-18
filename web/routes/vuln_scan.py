@@ -16,7 +16,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("vuln_scan_routes")
 
-vuln_scan_bp = Blueprint("vuln_scan", __name__, url_prefix="/vuln-scan")
+vuln_scan_bp = Blueprint("vuln_scan", __name__)
 
 
 @vuln_scan_bp.route("/")

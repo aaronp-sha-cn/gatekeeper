@@ -15,7 +15,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("ddos_routes")
 
-ddos_bp = Blueprint("ddos", __name__, url_prefix="/ddos")
+ddos_bp = Blueprint("ddos", __name__)
 
 
 @ddos_bp.route("/")

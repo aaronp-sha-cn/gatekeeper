@@ -142,18 +142,21 @@ if [ -f /target/etc/default/grub ]; then
     fi
 
     # 配置 GRUB 背景图片
+    _grub_bg_ext=""
     if [ -f /cdrom/grub_background.png ] || [ -f /cdrom/grub_background.jpg ] || [ -f /cdrom/grub_background.tga ]; then
         mkdir -p /target/boot/grub
         for ext in png jpg tga; do
             if [ -f /cdrom/grub_background.${ext} ]; then
                 cp /cdrom/grub_background.${ext} /target/boot/grub/grub_background.${ext}
+                _grub_bg_ext="${ext}"
                 break
             fi
         done
-        sed -i 's|^#GRUB_BACKGROUND=.*|GRUB_BACKGROUND=/boot/grub/grub_background.png|' /target/etc/default/grub
-        if ! grep -q "^GRUB_BACKGROUND=" /target/etc/default/grub; then
-            echo 'GRUB_BACKGROUND=/boot/grub/grub_background.png' >> /target/etc/default/grub
-        fi
+        if [ -n "$_grub_bg_ext" ]; then
+            sed -i 's|^#GRUB_BACKGROUND=.*|GRUB_BACKGROUND=/boot/grub/grub_background.'"${_grub_bg_ext}"'|' /target/etc/default/grub
+            if ! grep -q "^GRUB_BACKGROUND=" /target/etc/default/grub; then
+                echo 'GRUB_BACKGROUND=/boot/grub/grub_background.'"${_grub_bg_ext}" >> /target/etc/default/grub
+            fi
         # 主题颜色
         sed -i 's|^#GRUB_COLOR_NORMAL=.*|GRUB_COLOR_NORMAL="white/black"|' /target/etc/default/grub
         sed -i 's|^#GRUB_COLOR_HIGHLIGHT=.*|GRUB_COLOR_HIGHLIGHT="cyan/black"|' /target/etc/default/grub
@@ -288,9 +291,9 @@ cat > /target/etc/motd << 'MOTD_EOF'
 #     # #    #   #   #      #   #  #      #      #      #      #   #
  #####  #    #   #   ###### #    # ###### ###### #      ###### #    #
 
-  GateKeeper - AI Security Network Defense System v1.2.0
+  GateKeeper - AI Security Network Defense System v1.3.0
 
-  Web Interface: https://\4: \n
+  Web Interface: https://<IP>:8443
   Documentation: /opt/gatekeeper/docs/
 
 MOTD_EOF
@@ -345,8 +348,8 @@ TTYVHangup=no
 [Install]
 WantedBy=multi-user.target
 SERVICE_EOF
-    # 启用服务
-    ln -sf /target/etc/systemd/system/gatekeeper-setup.service \
+    # 启用服务（符号链接目标路径不应包含 /target 前缀）
+    ln -sf /etc/systemd/system/gatekeeper-setup.service \
         /target/etc/systemd/system/multi-user.target.wants/gatekeeper-setup.service
     # 创建安装标记
     touch /target/opt/gatekeeper/.install_pending
@@ -371,9 +374,9 @@ exit 0
 RCLOCAL_EOF
 chmod +x /target/etc/rc.local
 
-# 同时启用 rc-local 服务
+# 同时启用 rc-local 服务（符号链接目标路径不应包含 /target 前缀）
 if [ -f /target/etc/systemd/system/rc-local.service ] || [ -f /target/lib/systemd/system/rc-local.service ]; then
-    ln -sf /target/lib/systemd/system/rc-local.service \
+    ln -sf /lib/systemd/system/rc-local.service \
         /target/etc/systemd/system/multi-user.target.wants/rc-local.service 2>/dev/null || true
 fi
 

@@ -14,7 +14,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("auth_ldap_routes")
 
-ldap_bp = Blueprint("auth_ldap", __name__, url_prefix="/ldap")
+ldap_bp = Blueprint("auth_ldap", __name__)
 
 
 def _get_engine():

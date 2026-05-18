@@ -18,7 +18,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("sandbox_routes")
 
-sandbox_bp = Blueprint("sandbox", __name__, url_prefix="/sandbox")
+sandbox_bp = Blueprint("sandbox", __name__)
 
 
 # ============================================================

@@ -14,7 +14,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("ssl_inspector_routes")
 
-ssl_bp = Blueprint("ssl_inspector", __name__, url_prefix="/ssl")
+ssl_bp = Blueprint("ssl_inspector", __name__)
 
 
 def _get_engine():

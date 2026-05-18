@@ -14,7 +14,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("dual_wan_routes")
 
-dual_wan_bp = Blueprint("dual_wan", __name__, url_prefix="/dual-wan")
+dual_wan_bp = Blueprint("dual_wan", __name__)
 
 
 @dual_wan_bp.route("/")

@@ -17,7 +17,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("honeypot_routes")
 
-honeypot_bp = Blueprint("honeypot", __name__, url_prefix="/honeypot")
+honeypot_bp = Blueprint("honeypot", __name__)
 
 
 @honeypot_bp.route("/")

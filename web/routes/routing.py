@@ -20,7 +20,7 @@ from network.dynamic_routing import (
 
 logger = get_logger("routing_routes")
 
-routing_bp = Blueprint("routing", __name__, url_prefix="/routing")
+routing_bp = Blueprint("routing", __name__)
 
 
 @routing_bp.route("/")

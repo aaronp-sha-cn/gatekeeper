@@ -15,7 +15,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("dns_filter_routes")
 
-dns_filter_bp = Blueprint("dns_filter", __name__, url_prefix="/dns-filter")
+dns_filter_bp = Blueprint("dns_filter", __name__)
 
 
 @dns_filter_bp.route("/")

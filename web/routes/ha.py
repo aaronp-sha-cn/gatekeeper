@@ -15,7 +15,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("ha_routes")
 
-ha_bp = Blueprint("ha", __name__, url_prefix="/ha")
+ha_bp = Blueprint("ha", __name__)
 
 
 def _get_manager():

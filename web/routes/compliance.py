@@ -17,7 +17,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("compliance_routes")
 
-compliance_bp = Blueprint("compliance", __name__, url_prefix="/compliance")
+compliance_bp = Blueprint("compliance", __name__)
 
 # 内存存储网络设备列表（简易实现，生产环境应持久化到数据库）
 _network_devices = []

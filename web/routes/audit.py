@@ -16,7 +16,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("audit_routes")
 
-audit_bp = Blueprint("audit", __name__, url_prefix="/audit")
+audit_bp = Blueprint("audit", __name__)
 
 
 @audit_bp.route("/")

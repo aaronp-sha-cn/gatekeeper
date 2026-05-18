@@ -16,7 +16,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("vpn_routes")
 
-vpn_bp = Blueprint("vpn", __name__, url_prefix="/vpn")
+vpn_bp = Blueprint("vpn", __name__)
 
 
 # ============================================================

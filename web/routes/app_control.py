@@ -16,7 +16,7 @@ import json
 
 logger = get_logger("app_control_routes")
 
-app_control_bp = Blueprint("app_control", __name__, url_prefix="/app-control")
+app_control_bp = Blueprint("app_control", __name__)
 
 _detector = None
 

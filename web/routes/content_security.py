@@ -18,7 +18,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("content_security_routes")
 
-content_security_bp = Blueprint("content_security", __name__, url_prefix="/content-security")
+content_security_bp = Blueprint("content_security", __name__)
 
 
 def _get_engine():

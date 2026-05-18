@@ -15,7 +15,7 @@ from web.app import _safe_error_message
 
 logger = get_logger("rule_update_route")
 
-rule_update_bp = Blueprint('rule_update', __name__, url_prefix='/rule-update')
+rule_update_bp = Blueprint('rule_update', __name__)
 
 
 def _get_engine():
