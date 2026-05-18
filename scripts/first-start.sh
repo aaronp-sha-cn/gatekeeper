@@ -472,30 +472,6 @@ ENVEOF
     log "  journalctl -u gatekeeper -f"
     log "============================================"
 
-    # 将凭证写入 /etc/issue，每次登录时显示
-    cp /etc/issue /etc/issue.bak 2>/dev/null || true
-    cat > /etc/issue << ISSUE_EOF
-GateKeeper - AI Security Network Defense System
-Kernel \r on an \m (\l)
-
-  *** INITIAL CREDENTIALS ***
-  admin-sp : ${SP_PASS}
-  admin    : ${ADMIN_PASS}
-  root     : ${ROOT_PASS}
-
-  Web Panel: https://\4: \n
-  Credentials file: /opt/gatekeeper/.initial_credentials
-ISSUE_EOF
-    echo "GateKeeper - AI Security Network Defense System
-
-  *** INITIAL CREDENTIALS ***
-  admin-sp : ${SP_PASS}
-  admin    : ${ADMIN_PASS}
-  root     : ${ROOT_PASS}
-
-  Web Panel: https://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'localhost'):8443
-  Credentials file: /opt/gatekeeper/.initial_credentials" > /etc/issue.net
-
     # 暂停 30 秒，让用户看到凭证（按任意键跳过）
     log "Pausing 30s to display credentials (press any key to skip)..."
     _pause_start=$(date +%s)
