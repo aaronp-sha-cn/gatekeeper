@@ -18,8 +18,11 @@ log() {
 log "[GateKeeper] Post-install starting..."
 log "[GateKeeper] Configuring first-boot service..."
 
+# Update apt in chroot (sources.list should be configured by late-command)
+apt-get update 2>/dev/null || true
+
 # Ensure bash is available (needed by first-start.sh)
-apt-get install -y bash 2>/dev/null || true
+apt-get install -y bash 2>/dev/null || log "WARNING: bash install failed, using sh"
 
 # Ensure first-start.sh is executable
 chmod +x /opt/gatekeeper/scripts/first-start.sh 2>/dev/null || true
