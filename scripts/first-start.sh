@@ -220,14 +220,32 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
     openssl \
     2>&1 | apt_log || true
 
+# 确保 venv 存在
+if [ ! -f /opt/gatekeeper/venv/bin/pip ]; then
+    log "  Creating Python virtual environment..."
+    python3 -m venv /opt/gatekeeper/venv 2>&1 | apt_log || {
+        log "  ERROR: Failed to create venv, trying with --without-pip..."
+        python3 -m venv --without-pip /opt/gatekeeper/venv 2>&1 | apt_log || true
+        /opt/gatekeeper/venv/bin/python3 -m ensurepip 2>&1 | apt_log || true
+    }
+fi
+
+if [ ! -f /opt/gatekeeper/venv/bin/pip ]; then
+    log "  ERROR: venv pip not available, cannot continue"
+    exit 1
+fi
+
 /opt/gatekeeper/venv/bin/pip install --upgrade pip setuptools wheel --timeout 300 2>&1 | apt_log || true
 
 PIP_SUCCESS=0
 for i in 1 2 3; do
     log "  Installing dependencies (attempt $i/3)..."
-    # 直接安装，不通过管道（避免退出码丢失）
-    /opt/gatekeeper/venv/bin/pip install -r /opt/gatekeeper/requirements.txt --timeout 600 --trusted-host pypi.org --trusted-host files.pythonhosted.org 2>&1 | tee -a "$LOG_FILE"
-    _pip_rc=${PIPESTATUS[0]}
+    # 使用临时文件获取 pip 退出码（POSIX sh 兼容，不依赖 PIPESTATUS）
+    _tmp_rc=$(mktemp)
+    /opt/gatekeeper/venv/bin/pip install -r /opt/gatekeeper/requirements.txt --timeout 600 --trusted-host pypi.org --trusted-host files.pythonhosted.org > "$_tmp_rc" 2>&1; echo $? > "${_tmp_rc}.exit"
+    cat "$_tmp_rc" | tee -a "$LOG_FILE" | apt_log
+    _pip_rc=$(cat "${_tmp_rc}.exit")
+    rm -f "$_tmp_rc" "${_tmp_rc}.exit"
     if [ "$_pip_rc" -eq 0 ]; then
         PIP_SUCCESS=1
         log "  pip install -r requirements.txt succeeded (rc=$_pip_rc)"
@@ -263,8 +281,10 @@ for i in 1 2 3; do
         requests \
         ldap3 \
         flasgger \
-        2>&1 | tee -a "$LOG_FILE"
-    _pip_rc=${PIPESTATUS[0]}
+        > "$_tmp_rc" 2>&1; echo $? > "${_tmp_rc}.exit"
+    cat "$_tmp_rc" | tee -a "$LOG_FILE" | apt_log
+    _pip_rc=$(cat "${_tmp_rc}.exit")
+    rm -f "$_tmp_rc" "${_tmp_rc}.exit"
     if [ "$_pip_rc" -eq 0 ]; then
         PIP_SUCCESS=1
         log "  Direct pip install succeeded (rc=$_pip_rc)"
