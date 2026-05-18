@@ -138,6 +138,9 @@ fi
 log "[5/11] Creating Python virtual environment..."
 cd /opt/gatekeeper || { log "ERROR: Cannot enter project directory"; exit 1; }
 
+# Ensure python3-venv and python3-pip are available
+apt-get install -y python3-venv python3-pip 2>&1 | tee -a "$LOG_FILE" || true
+
 if [ ! -d "venv" ]; then
     python3 -m venv venv 2>&1 | tee -a "$LOG_FILE"
     if [ $? -ne 0 ]; then
