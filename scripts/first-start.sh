@@ -4,37 +4,25 @@
 # 由 systemd gatekeeper-setup.service 在首次启动后调用
 # 完成安装后配置：SSL、Python venv、pip、数据库、服务启动
 # ============================================================
-#
-# 关键修复说明：
-# - shebang 使用 #!/bin/sh，内部检测 bash 可用时 exec /bin/bash
-# - 开头立即安装 python3-venv python3-pip（使用 DEBIAN_FRONTEND=noninteractive）
-# - 检查 .install_pending 标记文件，已安装则跳过
-# - 所有 apt-get 均使用 DEBIAN_FRONTEND=noninteractive 避免交互
-# ============================================================
 
-# 如果 bash 可用，切换到 bash 执行（获得更好的错误处理和数组支持）
-if [ -x /bin/bash ]; then
-    exec /bin/bash "$0" "$@"
-fi
-
-set -e
+# 不要使用 set -e，手动处理错误（避免静默退出）
+set +e
 
 mkdir -p /opt/gatekeeper/logs
 
 LOG_FILE="/opt/gatekeeper/logs/first-start.log"
 INSTALL_MARKER="/opt/gatekeeper/.install_pending"
 
-# 直接写 tty0 控制台（绕过 systemd 输出捕获）
-console_msg() {
-    local msg="[$(date '+%H:%M:%S')] $1"
-    echo "$msg" >> "$LOG_FILE" 2>/dev/null || true
-    # 直接写入控制台
-    echo "$msg" > /dev/tty0 2>/dev/null || true
-    echo "$msg" > /dev/tty1 2>/dev/null || true
-}
-
+# 输出函数：同时写日志文件、/dev/console、/dev/tty0、/dev/tty1
 log() {
-    console_msg "$1"
+    _msg="[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+    echo "$_msg" >> "$LOG_FILE" 2>/dev/null
+    echo "$_msg" > /dev/console 2>/dev/null
+    echo "$_msg" > /dev/tty0 2>/dev/null
+    echo "$_msg" > /dev/tty1 2>/dev/null
+    # 使用 wall 广播到所有终端
+    echo "GateKeeper: $1" | wall 2>/dev/null
+    return 0
 }
 
 log "============================================"
