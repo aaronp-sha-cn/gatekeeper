@@ -201,6 +201,8 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
     libssl-dev \
     libffi-dev \
     libcap2-bin \
+    net-tools \
+    iproute2 \
     ebtables \
     bridge-utils \
     tcpdump \
@@ -208,6 +210,10 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
     iputils-ping \
     dnsutils \
     traceroute \
+    curl \
+    wget \
+    vim \
+    less \
     fail2ban \
     ufw \
     dnsmasq \
