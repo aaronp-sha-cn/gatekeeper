@@ -257,7 +257,22 @@ for i in 1 2 3; do
     if [ $? -eq 0 ]; then
         PIP_SUCCESS=1
         log "  Core dependencies installed"
-        break
+        # 验证关键包是否真的安装成功
+        log "  Verifying critical packages..."
+        _missing=0
+        for _pkg in flask sqlalchemy werkzeug markupsafe cryptography; do
+            if ! /opt/gatekeeper/venv/bin/python3 -c "import $_pkg" 2>/dev/null; then
+                log "  WARNING: $_pkg not importable!"
+                _missing=1
+            fi
+        done
+        if [ $_missing -eq 1 ]; then
+            log "  Some packages missing, retrying full install..."
+            PIP_SUCCESS=0
+        else
+            log "  All critical packages verified"
+            break
+        fi
     fi
     log "  pip install failed, retrying in 30s..."
     sleep 30
