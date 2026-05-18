@@ -450,6 +450,33 @@ ENVEOF
     systemctl enable gatekeeper.service 2>/dev/null || true
     systemctl start gatekeeper.service 2>/dev/null || true
 
+    # 检查服务启动状态
+    sleep 3
+    _svc_status=$(systemctl is-active gatekeeper.service 2>/dev/null || echo "unknown")
+    if [ "$_svc_status" = "active" ]; then
+        log "  GateKeeper service started successfully"
+    else
+        log "  WARNING: GateKeeper service status: $_svc_status"
+        log "  Checking service logs..."
+        journalctl -u gatekeeper.service --no-pager -n 20 2>/dev/null | while IFS= read -r line; do
+            log "    $line"
+        done
+        # 尝试手动启动获取详细错误
+        log "  Attempting manual start for diagnostics..."
+        /opt/gatekeeper/venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/opt/gatekeeper')
+try:
+    from core.app import main
+    main()
+except Exception as e:
+    print('SERVICE START ERROR: {}'.format(e), file=sys.stderr)
+    import traceback
+    traceback.print_exc()
+" 2>&1 | apt_log &
+        sleep 2
+    fi
+
     # Remove marker only after everything succeeded
     rm -f "$INSTALL_MARKER"
 
