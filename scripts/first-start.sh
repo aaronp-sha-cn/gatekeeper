@@ -50,7 +50,7 @@ export DEBIAN_FRONTEND=noninteractive
 # 1. 立即安装 python3-venv 和 python3-pip
 #    这是后续所有操作的基础依赖
 # ============================================================
-log "[1/11] Installing python3-venv and python3-pip..."
+log "[1/12] Installing python3-venv and python3-pip..."
 DEBIAN_FRONTEND=noninteractive apt-get install -y python3-venv python3-pip 2>&1 | apt_log || {
     log "WARNING: python3-venv/pip install failed, will retry after apt update"
     DEBIAN_FRONTEND=noninteractive apt-get update 2>&1 | apt_log || true
@@ -63,7 +63,7 @@ log "  python3-venv and python3-pip installed"
 # ============================================================
 # 2. Set directory permissions
 # ============================================================
-log "[2/11] Setting directory permissions..."
+log "[2/12] Setting directory permissions..."
 mkdir -p /opt/gatekeeper/{data,logs,models,uploads,backups,data/certs}
 chown -R root:root /opt/gatekeeper
 chmod 755 /opt/gatekeeper
@@ -72,16 +72,13 @@ log "  Directory permissions set"
 # ============================================================
 # 3. Configure SSH access
 # ============================================================
-log "[3/11] Configuring SSH access..."
+log "[3/12] Configuring SSH access..."
 
 # 安装 openssh-server（preseed 未安装任何额外包）
 log "  Installing openssh-server..."
 DEBIAN_FRONTEND=noninteractive apt-get install -y openssh-server 2>&1 | apt_log
 
-# 修改 root 密码为随机生成的密码
-echo "root:${ROOT_PASS}" | chpasswd 2>/dev/null && log "  root password updated" || log "  WARNING: root password update failed"
-# 修改 gkadmin 密码
-echo "gkadmin:${ADMIN_PASS}" | chpasswd 2>/dev/null && log "  gkadmin password updated" || log "  WARNING: gkadmin password update failed"
+# 注意：密码设置已移至步骤12（在密码生成之后执行）
 
 usermod -aG sudo gkadmin 2>/dev/null || true
 
@@ -104,7 +101,7 @@ log "  SSH configured"
 # ============================================================
 # 4. Configure Junos-style CLI as default login shell
 # ============================================================
-log "[4/11] Configuring Junos-style CLI..."
+log "[4/12] Configuring Junos-style CLI..."
 
 cat > /opt/gatekeeper/scripts/junos-cli-wrapper.sh << 'WRAPPER_EOF'
 #!/bin/bash
@@ -152,7 +149,7 @@ log "  Junos CLI configured"
 # ============================================================
 # 5. Generate SSL certificate
 # ============================================================
-log "[5/11] Generating SSL certificate..."
+log "[5/12] Generating SSL certificate..."
 CERT_DIR="/opt/gatekeeper/data/certs"
 if [ ! -f "${CERT_DIR}/server.crt" ]; then
     openssl req -x509 -newkey rsa:2048 \
@@ -173,7 +170,7 @@ fi
 # ============================================================
 # 6. Create Python virtual environment
 # ============================================================
-log "[6/11] Creating Python virtual environment..."
+log "[6/12] Creating Python virtual environment..."
 cd /opt/gatekeeper || { log "ERROR: Cannot enter project directory"; exit 1; }
 
 if [ ! -d "venv" ]; then
@@ -190,7 +187,7 @@ fi
 # ============================================================
 # 7. Install Python dependencies
 # ============================================================
-log "[7/11] Installing Python dependencies..."
+log "[7/12] Installing Python dependencies..."
 
 # Install system dependencies (build deps + network tools + security tools)
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
@@ -238,11 +235,25 @@ fi
 /opt/gatekeeper/venv/bin/pip install --upgrade pip setuptools wheel --timeout 300 2>&1 | apt_log || true
 
 PIP_SUCCESS=0
+
+# 检查是否有离线 wheels 可用
+OFFLINE_WHEELS=0
+if [ -d /opt/gatekeeper/pip-wheels ] && [ "$(ls -A /opt/gatekeeper/pip-wheels/*.whl 2>/dev/null)" ]; then
+    OFFLINE_WHEELS=1
+    log "  Found offline wheels in /opt/gatekeeper/pip-wheels/"
+fi
+
 for i in 1 2 3; do
     log "  Installing dependencies (attempt $i/3)..."
     # 使用临时文件获取 pip 退出码（POSIX sh 兼容，不依赖 PIPESTATUS）
     _tmp_rc=$(mktemp)
-    /opt/gatekeeper/venv/bin/pip install -r /opt/gatekeeper/requirements.txt --timeout 600 --trusted-host pypi.org --trusted-host files.pythonhosted.org > "$_tmp_rc" 2>&1; echo $? > "${_tmp_rc}.exit"
+
+    if [ $OFFLINE_WHEELS -eq 1 ]; then
+        log "  Installing from offline wheels..."
+        /opt/gatekeeper/venv/bin/pip install --no-index --find-links /opt/gatekeeper/pip-wheels -r /opt/gatekeeper/requirements.txt --timeout 600 > "$_tmp_rc" 2>&1; echo $? > "${_tmp_rc}.exit"
+    else
+        /opt/gatekeeper/venv/bin/pip install -r /opt/gatekeeper/requirements.txt --timeout 600 --trusted-host pypi.org --trusted-host files.pythonhosted.org > "$_tmp_rc" 2>&1; echo $? > "${_tmp_rc}.exit"
+    fi
     cat "$_tmp_rc" | tee -a "$LOG_FILE" | apt_log
     _pip_rc=$(cat "${_tmp_rc}.exit")
     rm -f "$_tmp_rc" "${_tmp_rc}.exit"
@@ -255,33 +266,63 @@ for i in 1 2 3; do
     fi
 
     # 后备：逐个安装（和 requirements.txt 完全一致）
-    /opt/gatekeeper/venv/bin/pip install --timeout 600 --trusted-host pypi.org --trusted-host files.pythonhosted.org \
-        flask \
-        flask-login \
-        flask-wtf \
-        flask-limiter \
-        werkzeug \
-        markupsafe \
-        sqlalchemy \
-        alembic \
-        scapy \
-        dpkt \
-        scikit-learn \
-        numpy \
-        pandas \
-        joblib \
-        schedule \
-        apscheduler \
-        paramiko \
-        reportlab \
-        email-validator \
-        prompt-toolkit \
-        psutil \
-        cryptography \
-        requests \
-        ldap3 \
-        flasgger \
-        > "$_tmp_rc" 2>&1; echo $? > "${_tmp_rc}.exit"
+    if [ $OFFLINE_WHEELS -eq 1 ]; then
+        /opt/gatekeeper/venv/bin/pip install --no-index --find-links /opt/gatekeeper/pip-wheels \
+            flask \
+            flask-login \
+            flask-wtf \
+            flask-limiter \
+            werkzeug \
+            markupsafe \
+            sqlalchemy \
+            alembic \
+            scapy \
+            dpkt \
+            scikit-learn \
+            numpy \
+            pandas \
+            joblib \
+            schedule \
+            apscheduler \
+            paramiko \
+            reportlab \
+            email-validator \
+            prompt-toolkit \
+            psutil \
+            cryptography \
+            requests \
+            ldap3 \
+            flasgger \
+            > "$_tmp_rc" 2>&1; echo $? > "${_tmp_rc}.exit"
+    else
+        /opt/gatekeeper/venv/bin/pip install --timeout 600 --trusted-host pypi.org --trusted-host files.pythonhosted.org \
+            flask \
+            flask-login \
+            flask-wtf \
+            flask-limiter \
+            werkzeug \
+            markupsafe \
+            sqlalchemy \
+            alembic \
+            scapy \
+            dpkt \
+            scikit-learn \
+            numpy \
+            pandas \
+            joblib \
+            schedule \
+            apscheduler \
+            paramiko \
+            reportlab \
+            email-validator \
+            prompt-toolkit \
+            psutil \
+            cryptography \
+            requests \
+            ldap3 \
+            flasgger \
+            > "$_tmp_rc" 2>&1; echo $? > "${_tmp_rc}.exit"
+    fi
     cat "$_tmp_rc" | tee -a "$LOG_FILE" | apt_log
     _pip_rc=$(cat "${_tmp_rc}.exit")
     rm -f "$_tmp_rc" "${_tmp_rc}.exit"
@@ -325,7 +366,7 @@ fi
 # 8. Configure libpcap permissions
 # ============================================================
 if [ $PIP_SUCCESS -eq 1 ] || [ -f /opt/gatekeeper/venv/bin/python3 ]; then
-    log "[8/11] Configuring network permissions..."
+    log "[8/12] Configuring network permissions..."
 
     DEBIAN_FRONTEND=noninteractive apt-get install -y libcap2-bin 2>&1 | apt_log
 
@@ -337,13 +378,13 @@ if [ $PIP_SUCCESS -eq 1 ] || [ -f /opt/gatekeeper/venv/bin/python3 ]; then
         log "  WARNING: venv python3 not found, skipping setcap"
     fi
 else
-    log "[8/11] Skipping network permissions (pip install failed)"
+    log "[8/12] Skipping network permissions (pip install failed)"
 fi
 
 # ============================================================
 # 9. Security services (installed on-demand)
 # ============================================================
-log "[9/11] Security services setup..."
+log "[9/12] Security services setup..."
 log "  Security services (ClamAV/Squid/ProFTPD/Postfix/Samba/mitmproxy) can be installed on-demand:"
 log "  /opt/gatekeeper/scripts/install-security-services.sh"
 
@@ -351,7 +392,7 @@ log "  /opt/gatekeeper/scripts/install-security-services.sh"
 # 10. Initialize database
 # ============================================================
 if [ $PIP_SUCCESS -eq 1 ]; then
-    log "[10/11] Initializing database..."
+    log "[10/12] Initializing database..."
     PYTHONPATH=/opt/gatekeeper /opt/gatekeeper/venv/bin/python3 -c "
 import sys, traceback
 sys.path.insert(0, '/opt/gatekeeper')
@@ -370,13 +411,13 @@ except Exception as e:
         log "  WARNING: Database init failed (will retry on service start)"
     fi
 else
-    log "[10/11] Skipping database init (pip install failed)"
+    log "[10/12] Skipping database init (pip install failed)"
 fi
 
 # ============================================================
 # 11. Configure systemd services and firewall
 # ============================================================
-log "[11/11] Configuring system services..."
+log "[11/12] Configuring system services..."
 
 # Main service
 cat > /etc/systemd/system/gatekeeper.service << 'EOF'
@@ -419,7 +460,6 @@ iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT 2>/dev/null || true
 iptables -A INPUT -p icmp --icmp-type echo-reply -j ACCEPT 2>/dev/null || true
 iptables -A INPUT -p tcp --dport 22 -j ACCEPT 2>/dev/null || true
 iptables -A INPUT -p tcp --dport 8443 -j ACCEPT 2>/dev/null || true
-iptables -A INPUT -p tcp --dport 8080 -j ACCEPT 2>/dev/null || true
 iptables -P INPUT DROP 2>/dev/null || true
 iptables -P FORWARD DROP 2>/dev/null || true
 iptables -P OUTPUT ACCEPT 2>/dev/null || true
@@ -481,6 +521,11 @@ if [ $PIP_SUCCESS -eq 1 ]; then
     SP_PASS=$(/opt/gatekeeper/venv/bin/python3 -c "import secrets; import string; a=string.ascii_letters+string.digits+'!@%&*'; print(''.join(secrets.choice(a) for _ in range(16)))" 2>/dev/null || echo "SpPass$(date +%s)!")
     ADMIN_PASS=$(/opt/gatekeeper/venv/bin/python3 -c "import secrets; import string; a=string.ascii_letters+string.digits+'!@%&*'; print(''.join(secrets.choice(a) for _ in range(16)))" 2>/dev/null || echo "AdminPass$(date +%s)!")
     ROOT_PASS=$(/opt/gatekeeper/venv/bin/python3 -c "import secrets; import string; a=string.ascii_letters+string.digits+'!@%&*'; print(''.join(secrets.choice(a) for _ in range(16)))" 2>/dev/null || echo "RootPass$(date +%s)!")
+
+    # 设置系统用户密码（在密码生成之后执行）
+    echo "root:${ROOT_PASS}" | chpasswd 2>/dev/null && log "  root password updated" || log "  WARNING: root password update failed"
+    echo "gkadmin:${ADMIN_PASS}" | chpasswd 2>/dev/null && log "  gkadmin password updated" || log "  WARNING: gkadmin password update failed"
+
     (umask 077; cat > /opt/gatekeeper/.initial_credentials << CRED_EOF
 admin-sp:${SP_PASS}
 admin:${ADMIN_PASS}

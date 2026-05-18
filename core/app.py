@@ -560,7 +560,10 @@ class GateKeeper:
         if web_thread and web_thread.is_alive():
             import requests as _req
             try:
-                _req.post("http://127.0.0.1:{}/shutdown".format(settings.web.port), timeout=5)
+                if settings.web.ssl_enabled:
+                    _req.post("https://127.0.0.1:{}/shutdown".format(settings.web.port), timeout=5, verify=False)
+                else:
+                    _req.post("http://127.0.0.1:{}/shutdown".format(settings.web.port), timeout=5)
             except Exception:
                 pass
             web_thread.join(timeout=10)

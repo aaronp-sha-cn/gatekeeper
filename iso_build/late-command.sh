@@ -62,6 +62,14 @@ else
     exit 1
 fi
 
+# 复制离线 pip wheels（如果存在）
+if [ -f /cdrom/pip-wheels.tar.gz ]; then
+    echo "[GateKeeper] [2] 复制离线 pip wheels..."
+    mkdir -p /target/opt/gatekeeper
+    cp /cdrom/pip-wheels.tar.gz /target/opt/gatekeeper/
+    echo "[GateKeeper] [2] pip-wheels.tar.gz 已复制"
+fi
+
 if [ -f /target/tmp/gatekeeper.tar.gz ]; then
     tar xzf /target/tmp/gatekeeper.tar.gz -C /target/
     echo "[GateKeeper] [2] 解压完成"
@@ -80,6 +88,14 @@ fi
 # 设置脚本权限
 chmod +x /target/opt/gatekeeper/scripts/*.sh 2>/dev/null || true
 echo "[GateKeeper] [2] 脚本权限已设置"
+
+# 解压离线 pip wheels（如果存在）
+if [ -f /target/opt/gatekeeper/pip-wheels.tar.gz ]; then
+    echo "[GateKeeper] [2] 解压离线 pip wheels..."
+    mkdir -p /target/opt/gatekeeper/pip-wheels
+    tar xzf /target/opt/gatekeeper/pip-wheels.tar.gz -C /target/opt/gatekeeper/pip-wheels/
+    echo "[GateKeeper] [2] pip wheels 解压完成"
+fi
 
 # ============================================================
 # 3. 配置网络接口（eth0 DHCP）
