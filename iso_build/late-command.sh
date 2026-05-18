@@ -334,9 +334,33 @@ SERVICE_EOF
 fi
 
 # ============================================================
-# 8. 清理临时文件
+# 8. 添加 rc.local 后备触发（确保 first-start 一定被执行）
+#    即使 systemd 服务未启动，rc.local 也会在启动时执行
 # ============================================================
-echo "[GateKeeper] [8] 清理临时文件..."
+echo "[GateKeeper] [8] 添加 rc.local 后备触发..."
+mkdir -p /target/etc/rc.local.d
+cat > /target/etc/rc.local << 'RCLOCAL_EOF'
+#!/bin/sh
+# GateKeeper - rc.local 后备触发
+# 如果 first-start.sh 尚未执行（.install_pending 存在），则执行
+if [ -f /opt/gatekeeper/.install_pending ]; then
+    echo "[$(date)] rc.local: 检测到 .install_pending，启动 first-start.sh" > /opt/gatekeeper/logs/rc-local-trigger.log
+    /bin/sh /opt/gatekeeper/scripts/first-start.sh >> /opt/gatekeeper/logs/rc-local-trigger.log 2>&1
+fi
+exit 0
+RCLOCAL_EOF
+chmod +x /target/etc/rc.local
+
+# 同时启用 rc-local 服务
+if [ -f /target/etc/systemd/system/rc-local.service ] || [ -f /target/lib/systemd/system/rc-local.service ]; then
+    ln -sf /target/lib/systemd/system/rc-local.service \
+        /target/etc/systemd/system/multi-user.target.wants/rc-local.service 2>/dev/null || true
+fi
+
+# ============================================================
+# 9. 清理临时文件
+# ============================================================
+echo "[GateKeeper] [9] 清理临时文件..."
 rm -f /target/tmp/gatekeeper.tar.gz
 rm -f /target/tmp/late-command.sh
 
