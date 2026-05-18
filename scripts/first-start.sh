@@ -19,13 +19,22 @@ fi
 
 set -e
 
+mkdir -p /opt/gatekeeper/logs
+
 LOG_FILE="/opt/gatekeeper/logs/first-start.log"
 INSTALL_MARKER="/opt/gatekeeper/.install_pending"
 
-mkdir -p /opt/gatekeeper/logs
+# 直接写 tty0 控制台（绕过 systemd 输出捕获）
+console_msg() {
+    local msg="[$(date '+%H:%M:%S')] $1"
+    echo "$msg" >> "$LOG_FILE" 2>/dev/null || true
+    # 直接写入控制台
+    echo "$msg" > /dev/tty0 2>/dev/null || true
+    echo "$msg" > /dev/tty1 2>/dev/null || true
+}
 
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+    console_msg "$1"
 }
 
 log "============================================"
