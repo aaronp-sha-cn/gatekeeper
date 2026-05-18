@@ -74,7 +74,16 @@ log "  Directory permissions set"
 # ============================================================
 log "[3/11] Configuring SSH access..."
 
-usermod -aG sudo admin 2>/dev/null || true
+# 安装 openssh-server（preseed 未安装任何额外包）
+log "  Installing openssh-server..."
+DEBIAN_FRONTEND=noninteractive apt-get install -y openssh-server 2>&1 | apt_log
+
+# 修改 root 密码为随机生成的密码
+echo "root:${ROOT_PASS}" | chpasswd 2>/dev/null && log "  root password updated" || log "  WARNING: root password update failed"
+# 修改 gkadmin 密码
+echo "gkadmin:${ADMIN_PASS}" | chpasswd 2>/dev/null && log "  gkadmin password updated" || log "  WARNING: gkadmin password update failed"
+
+usermod -aG sudo gkadmin 2>/dev/null || true
 
 sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config 2>/dev/null || true
 sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config 2>/dev/null || true
@@ -87,8 +96,8 @@ grep -q "^LoginGraceTime" /etc/ssh/sshd_config 2>/dev/null && \
     sed -i 's/^#*LoginGraceTime.*/LoginGraceTime 30/' /etc/ssh/sshd_config 2>/dev/null || \
     echo "LoginGraceTime 30" >> /etc/ssh/sshd_config 2>/dev/null || true
 
-systemctl enable ssh 2>/dev/null || true
-systemctl restart ssh 2>/dev/null || true
+systemctl enable sshd 2>/dev/null || systemctl enable ssh 2>/dev/null || true
+systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null || true
 
 log "  SSH configured"
 
