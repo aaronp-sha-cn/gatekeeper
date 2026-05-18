@@ -16,7 +16,8 @@
 DEBUG_LOG="/target/tmp/late-command-debug.log"
 echo "[$(date)] late_command started" >> "$DEBUG_LOG" 2>/dev/null || true
 
-set -e
+# 不要使用 set -e！任何步骤失败都不应阻止后续关键步骤执行
+set +e
 
 echo "[GateKeeper] ============================================"
 echo "[GateKeeper] late_command: 开始执行安装后配置..."

@@ -20,9 +20,15 @@ log() {
     echo "$_msg" > /dev/console 2>/dev/null
     echo "$_msg" > /dev/tty0 2>/dev/null
     echo "$_msg" > /dev/tty1 2>/dev/null
-    # 使用 wall 广播到所有终端
-    echo "GateKeeper: $1" | wall 2>/dev/null
     return 0
+}
+
+# apt 输出也显示在控制台
+apt_log() {
+    tee -a "$LOG_FILE" 2>/dev/null | while IFS= read -r line; do
+        echo "$line" > /dev/tty0 2>/dev/null
+        echo "$line" > /dev/console 2>/dev/null
+    done
 }
 
 log "============================================"
@@ -45,12 +51,11 @@ export DEBIAN_FRONTEND=noninteractive
 #    这是后续所有操作的基础依赖
 # ============================================================
 log "[1/11] Installing python3-venv and python3-pip..."
-DEBIAN_FRONTEND=noninteractive apt-get install -y python3-venv python3-pip 2>&1 | tee -a "$LOG_FILE" || {
+DEBIAN_FRONTEND=noninteractive apt-get install -y python3-venv python3-pip 2>&1 | apt_log || {
     log "WARNING: python3-venv/pip install failed, will retry after apt update"
-    DEBIAN_FRONTEND=noninteractive apt-get update 2>&1 | tee -a "$LOG_FILE" || true
-    DEBIAN_FRONTEND=noninteractive apt-get install -y python3-venv python3-pip 2>&1 | tee -a "$LOG_FILE" || {
+    DEBIAN_FRONTEND=noninteractive apt-get update 2>&1 | apt_log || true
+    DEBIAN_FRONTEND=noninteractive apt-get install -y python3-venv python3-pip 2>&1 | apt_log || {
         log "ERROR: python3-venv/pip install failed after retry"
-        exit 1
     }
 }
 log "  python3-venv and python3-pip installed"
@@ -146,7 +151,7 @@ if [ ! -f "${CERT_DIR}/server.crt" ]; then
         -out "${CERT_DIR}/server.crt" \
         -days 365 \
         -nodes \
-        -subj "/C=CN/ST=Beijing/L=Beijing/O=GateKeeper/CN=localhost" 2>&1 | tee -a "$LOG_FILE"
+        -subj "/C=CN/ST=Beijing/L=Beijing/O=GateKeeper/CN=localhost" 2>&1 | apt_log
     if [ $? -eq 0 ]; then
         log "  SSL certificate generated"
     else
@@ -163,7 +168,7 @@ log "[6/11] Creating Python virtual environment..."
 cd /opt/gatekeeper || { log "ERROR: Cannot enter project directory"; exit 1; }
 
 if [ ! -d "venv" ]; then
-    python3 -m venv venv 2>&1 | tee -a "$LOG_FILE"
+    python3 -m venv venv 2>&1 | apt_log
     if [ $? -ne 0 ]; then
         log "ERROR: Python venv creation failed"
         exit 1
@@ -198,14 +203,14 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
     ufw \
     dnsmasq \
     openssl \
-    2>&1 | tee -a "$LOG_FILE" || true
+    2>&1 | apt_log || true
 
-/opt/gatekeeper/venv/bin/pip install --upgrade pip setuptools wheel --timeout 300 2>&1 | tee -a "$LOG_FILE"
+/opt/gatekeeper/venv/bin/pip install --upgrade pip setuptools wheel --timeout 300 2>&1 | apt_log
 
 PIP_SUCCESS=0
 for i in 1 2 3; do
     log "  Installing dependencies (attempt $i/3)..."
-    if /opt/gatekeeper/venv/bin/pip install -r /opt/gatekeeper/requirements.txt --timeout 600 --trusted-host pypi.org --trusted-host files.pythonhosted.org 2>&1 | tee -a "$LOG_FILE"; then
+    if /opt/gatekeeper/venv/bin/pip install -r /opt/gatekeeper/requirements.txt --timeout 600 --trusted-host pypi.org --trusted-host files.pythonhosted.org 2>&1 | apt_log; then
         PIP_SUCCESS=1
         log "  Python dependencies installed"
         break
@@ -233,7 +238,7 @@ for i in 1 2 3; do
         requests \
         email-validator \
         ldap3 \
-        2>&1 | tee -a "$LOG_FILE"
+        2>&1 | apt_log
     if [ $? -eq 0 ]; then
         PIP_SUCCESS=1
         log "  Core dependencies installed"
@@ -250,7 +255,7 @@ fi
 # Install project itself (register CLI entry points)
 if [ $PIP_SUCCESS -eq 1 ]; then
     log "  Installing project CLI entry points..."
-    cd /opt/gatekeeper && /opt/gatekeeper/venv/bin/pip install -e . --timeout 120 2>&1 | tee -a "$LOG_FILE" || true
+    cd /opt/gatekeeper && /opt/gatekeeper/venv/bin/pip install -e . --timeout 120 2>&1 | apt_log || true
 fi
 
 # ============================================================
@@ -259,10 +264,10 @@ fi
 if [ $PIP_SUCCESS -eq 1 ] || [ -f /opt/gatekeeper/venv/bin/python3 ]; then
     log "[8/11] Configuring network permissions..."
 
-    DEBIAN_FRONTEND=noninteractive apt-get install -y libcap2-bin 2>&1 | tee -a "$LOG_FILE"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y libcap2-bin 2>&1 | apt_log
 
     if [ -f /opt/gatekeeper/venv/bin/python3 ]; then
-        setcap 'cap_net_raw,cap_net_admin=eip' /opt/gatekeeper/venv/bin/python3 2>&1 | tee -a "$LOG_FILE" && \
+        setcap 'cap_net_raw,cap_net_admin=eip' /opt/gatekeeper/venv/bin/python3 2>&1 | apt_log && \
             log "  Network permissions configured" || \
             log "  WARNING: setcap failed, scapy may require root"
     else
@@ -295,7 +300,7 @@ except Exception as e:
     print('ERROR: {}'.format(e), file=sys.stderr)
     traceback.print_exc()
     sys.exit(1)
-" 2>&1 | tee -a "$LOG_FILE"
+" 2>&1 | apt_log
     if [ $? -eq 0 ]; then
         log "  Database initialized"
     else
@@ -342,7 +347,7 @@ EOF
 mkdir -p /etc/iptables
 echo "iptables-persistent iptables-persistent/autosave_v4 boolean true" | debconf-set-selections 2>/dev/null || true
 echo "iptables-persistent iptables-persistent/autosave_v6 boolean true" | debconf-set-selections 2>/dev/null || true
-DEBIAN_FRONTEND=noninteractive apt-get install -y -o DPkg::Options::="--force-confdef" -o DPkg::Options::="--force-confold" iptables-persistent 2>&1 | tee -a "$LOG_FILE" || true
+DEBIAN_FRONTEND=noninteractive apt-get install -y -o DPkg::Options::="--force-confdef" -o DPkg::Options::="--force-confold" iptables-persistent 2>&1 | apt_log || true
 
 # Add ACCEPT rules first (before setting DROP policy)
 iptables -I INPUT 1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
