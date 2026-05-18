@@ -318,9 +318,12 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/opt/gatekeeper/scripts/first-start.sh
-TimeoutStartSec=900
-StandardOutput=journal+console
-StandardError=journal+console
+TimeoutStartSec=1800
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty0
+TTYReset=yes
+TTYVHangup=no
 
 [Install]
 WantedBy=multi-user.target
