@@ -1,16 +1,23 @@
 #!/bin/sh
 # ============================================================
 # GateKeeper - First Boot Configuration Script
-# Called by systemd gatekeeper-setup.service (after reboot)
-# Completes post-install setup: SSL, venv, pip, database, services
+# 由 systemd gatekeeper-setup.service 在首次启动后调用
+# 完成安装后配置：SSL、Python venv、pip、数据库、服务启动
+# ============================================================
+#
+# 关键修复说明：
+# - shebang 使用 #!/bin/sh，内部检测 bash 可用时 exec /bin/bash
+# - 开头立即安装 python3-venv python3-pip（使用 DEBIAN_FRONTEND=noninteractive）
+# - 检查 .install_pending 标记文件，已安装则跳过
+# - 所有 apt-get 均使用 DEBIAN_FRONTEND=noninteractive 避免交互
 # ============================================================
 
-# Use bash if available, fall back to sh
+# 如果 bash 可用，切换到 bash 执行（获得更好的错误处理和数组支持）
 if [ -x /bin/bash ]; then
     exec /bin/bash "$0" "$@"
 fi
 
-set -euo pipefail 2>/dev/null || set -e
+set -e
 
 LOG_FILE="/opt/gatekeeper/logs/first-start.log"
 INSTALL_MARKER="/opt/gatekeeper/.install_pending"
@@ -25,7 +32,10 @@ log "============================================"
 log "GateKeeper first-boot configuration starting"
 log "============================================"
 
-# Skip if already completed
+# ============================================================
+# 0. 检查 .install_pending 标记文件
+#    如果不存在，说明安装已完成，跳过
+# ============================================================
 if [ ! -f "$INSTALL_MARKER" ]; then
     log "Installation already completed, skipping"
     exit 0
@@ -34,26 +44,39 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 
 # ============================================================
-# 1. Set directory permissions
+# 1. 立即安装 python3-venv 和 python3-pip
+#    这是后续所有操作的基础依赖
 # ============================================================
-log "[1/11] Setting directory permissions..."
+log "[1/11] Installing python3-venv and python3-pip..."
+DEBIAN_FRONTEND=noninteractive apt-get install -y python3-venv python3-pip 2>&1 | tee -a "$LOG_FILE" || {
+    log "WARNING: python3-venv/pip install failed, will retry after apt update"
+    DEBIAN_FRONTEND=noninteractive apt-get update 2>&1 | tee -a "$LOG_FILE" || true
+    DEBIAN_FRONTEND=noninteractive apt-get install -y python3-venv python3-pip 2>&1 | tee -a "$LOG_FILE" || {
+        log "ERROR: python3-venv/pip install failed after retry"
+        exit 1
+    }
+}
+log "  python3-venv and python3-pip installed"
+
+# ============================================================
+# 2. Set directory permissions
+# ============================================================
+log "[2/11] Setting directory permissions..."
 mkdir -p /opt/gatekeeper/{data,logs,models,uploads,backups,data/certs}
 chown -R root:root /opt/gatekeeper
 chmod 755 /opt/gatekeeper
 log "  Directory permissions set"
 
 # ============================================================
-# 2. Configure SSH access
+# 3. Configure SSH access
 # ============================================================
-log "[2/11] Configuring SSH access..."
+log "[3/11] Configuring SSH access..."
 
 usermod -aG sudo admin 2>/dev/null || true
 
 sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config 2>/dev/null || true
-# Also ensure PermitRootLogin allows password login (needed during initial deployment)
 sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config 2>/dev/null || true
 
-# Tighten SSH security: limit auth attempts and connection grace time
 grep -q "^MaxAuthTries" /etc/ssh/sshd_config 2>/dev/null && \
     sed -i 's/^#*MaxAuthTries.*/MaxAuthTries 3/' /etc/ssh/sshd_config 2>/dev/null || \
     echo "MaxAuthTries 3" >> /etc/ssh/sshd_config 2>/dev/null || true
@@ -68,9 +91,9 @@ systemctl restart ssh 2>/dev/null || true
 log "  SSH configured"
 
 # ============================================================
-# 3. Configure Junos-style CLI as default login shell
+# 4. Configure Junos-style CLI as default login shell
 # ============================================================
-log "[3/11] Configuring Junos-style CLI..."
+log "[4/11] Configuring Junos-style CLI..."
 
 cat > /opt/gatekeeper/scripts/junos-cli-wrapper.sh << 'WRAPPER_EOF'
 #!/bin/bash
@@ -97,7 +120,6 @@ ln -sf /opt/gatekeeper/venv/bin/gatekeeper /usr/local/bin/gatekeeper 2>/dev/null
 # Fallback: if pip install -e . failed, create wrapper scripts directly
 if [ ! -f /opt/gatekeeper/venv/bin/gk-cli ]; then
     log "  pip install -e . may have failed, creating CLI wrapper scripts..."
-    # Remove broken symlinks first
     rm -f /usr/local/bin/gk-cli /usr/local/bin/gk-junos /usr/local/bin/gk-cisco /usr/local/bin/gatekeeper 2>/dev/null || true
     cat > /usr/local/bin/gk-cli << 'GKCLI_EOF'
 #!/bin/bash
@@ -117,9 +139,9 @@ fi
 log "  Junos CLI configured"
 
 # ============================================================
-# 4. Generate SSL certificate
+# 5. Generate SSL certificate
 # ============================================================
-log "[4/11] Generating SSL certificate..."
+log "[5/11] Generating SSL certificate..."
 CERT_DIR="/opt/gatekeeper/data/certs"
 if [ ! -f "${CERT_DIR}/server.crt" ]; then
     openssl req -x509 -newkey rsa:2048 \
@@ -138,13 +160,10 @@ else
 fi
 
 # ============================================================
-# 5. Create Python virtual environment
+# 6. Create Python virtual environment
 # ============================================================
-log "[5/11] Creating Python virtual environment..."
+log "[6/11] Creating Python virtual environment..."
 cd /opt/gatekeeper || { log "ERROR: Cannot enter project directory"; exit 1; }
-
-# Ensure python3-venv and python3-pip are available
-apt-get install -y python3-venv python3-pip 2>&1 | tee -a "$LOG_FILE" || true
 
 if [ ! -d "venv" ]; then
     python3 -m venv venv 2>&1 | tee -a "$LOG_FILE"
@@ -158,12 +177,12 @@ else
 fi
 
 # ============================================================
-# 6. Install Python dependencies
+# 7. Install Python dependencies
 # ============================================================
-log "[6/11] Installing Python dependencies..."
+log "[7/11] Installing Python dependencies..."
 
 # Install system dependencies (build deps + network tools + security tools)
-apt-get install -y \
+DEBIAN_FRONTEND=noninteractive apt-get install -y \
     build-essential \
     python3-dev \
     gcc g++ \
@@ -189,15 +208,12 @@ apt-get install -y \
 PIP_SUCCESS=0
 for i in 1 2 3; do
     log "  Installing dependencies (attempt $i/3)..."
-    # --no-deps-errors flag not available, install core deps individually on failure
-    # Try full install first, skip problematic packages if it fails
     if /opt/gatekeeper/venv/bin/pip install -r /opt/gatekeeper/requirements.txt --timeout 600 --trusted-host pypi.org --trusted-host files.pythonhosted.org 2>&1 | tee -a "$LOG_FILE"; then
         PIP_SUCCESS=1
         log "  Python dependencies installed"
         break
     fi
-    log "  pip install failed (some packages may be unavailable), installing core dependencies directly..."
-    # Install core dependencies directly, skip problematic packages in requirements.txt
+    log "  pip install failed, installing core dependencies directly..."
     /opt/gatekeeper/venv/bin/pip install --timeout 600 --trusted-host pypi.org --trusted-host files.pythonhosted.org \
         flask \
         flask-login \
@@ -241,12 +257,12 @@ if [ $PIP_SUCCESS -eq 1 ]; then
 fi
 
 # ============================================================
-# 7. Configure libpcap permissions
+# 8. Configure libpcap permissions
 # ============================================================
 if [ $PIP_SUCCESS -eq 1 ] || [ -f /opt/gatekeeper/venv/bin/python3 ]; then
-    log "[7/11] Configuring network permissions..."
+    log "[8/11] Configuring network permissions..."
 
-    apt-get install -y libcap2-bin 2>&1 | tee -a "$LOG_FILE"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y libcap2-bin 2>&1 | tee -a "$LOG_FILE"
 
     if [ -f /opt/gatekeeper/venv/bin/python3 ]; then
         setcap 'cap_net_raw,cap_net_admin=eip' /opt/gatekeeper/venv/bin/python3 2>&1 | tee -a "$LOG_FILE" && \
@@ -256,21 +272,21 @@ if [ $PIP_SUCCESS -eq 1 ] || [ -f /opt/gatekeeper/venv/bin/python3 ]; then
         log "  WARNING: venv python3 not found, skipping setcap"
     fi
 else
-    log "[7/11] Skipping network permissions (pip install failed)"
+    log "[8/11] Skipping network permissions (pip install failed)"
 fi
 
 # ============================================================
-# 8. Security services (installed on-demand)
+# 9. Security services (installed on-demand)
 # ============================================================
-log "[8/11] Security services setup..."
+log "[9/11] Security services setup..."
 log "  Security services (ClamAV/Squid/ProFTPD/Postfix/Samba/mitmproxy) can be installed on-demand:"
 log "  /opt/gatekeeper/scripts/install-security-services.sh"
 
 # ============================================================
-# 9. Initialize database
+# 10. Initialize database
 # ============================================================
 if [ $PIP_SUCCESS -eq 1 ]; then
-    log "[9/11] Initializing database..."
+    log "[10/11] Initializing database..."
     PYTHONPATH=/opt/gatekeeper /opt/gatekeeper/venv/bin/python3 -c "
 import sys, traceback
 sys.path.insert(0, '/opt/gatekeeper')
@@ -289,13 +305,13 @@ except Exception as e:
         log "  WARNING: Database init failed (will retry on service start)"
     fi
 else
-    log "[9/11] Skipping database init (pip install failed)"
+    log "[10/11] Skipping database init (pip install failed)"
 fi
 
 # ============================================================
-# 10. Configure systemd services and firewall
+# 11. Configure systemd services and firewall
 # ============================================================
-log "[10/11] Configuring system services..."
+log "[11/11] Configuring system services..."
 
 # Main service
 cat > /etc/systemd/system/gatekeeper.service << 'EOF'
@@ -327,12 +343,11 @@ EOF
 
 # Firewall rules
 mkdir -p /etc/iptables
-# Install iptables-persistent to persist rules across reboots
 echo "iptables-persistent iptables-persistent/autosave_v4 boolean true" | debconf-set-selections 2>/dev/null || true
 echo "iptables-persistent iptables-persistent/autosave_v6 boolean true" | debconf-set-selections 2>/dev/null || true
-apt-get install -y -o DPkg::Options::="--force-confdef" -o DPkg::Options::="--force-confold" iptables-persistent 2>&1 | tee -a "$LOG_FILE" || true
+DEBIAN_FRONTEND=noninteractive apt-get install -y -o DPkg::Options::="--force-confdef" -o DPkg::Options::="--force-confold" iptables-persistent 2>&1 | tee -a "$LOG_FILE" || true
 
-# Add ACCEPT rules first (before setting DROP policy, to prevent lockout from race conditions)
+# Add ACCEPT rules first (before setting DROP policy)
 iptables -I INPUT 1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
 iptables -I INPUT 2 -i lo -j ACCEPT 2>/dev/null || true
 iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT 2>/dev/null || true
@@ -340,7 +355,6 @@ iptables -A INPUT -p icmp --icmp-type echo-reply -j ACCEPT 2>/dev/null || true
 iptables -A INPUT -p tcp --dport 22 -j ACCEPT 2>/dev/null || true
 iptables -A INPUT -p tcp --dport 8443 -j ACCEPT 2>/dev/null || true
 iptables -A INPUT -p tcp --dport 8080 -j ACCEPT 2>/dev/null || true
-# Set default policies last
 iptables -P INPUT DROP 2>/dev/null || true
 iptables -P FORWARD DROP 2>/dev/null || true
 iptables -P OUTPUT ACCEPT 2>/dev/null || true
@@ -392,13 +406,13 @@ EOF
 log "  System services configured"
 
 # ============================================================
-# 11. Generate credentials, set permissions and start service
+# 12. Generate credentials, set permissions and start service
 # ============================================================
-log "[11/11] Generating credentials and starting service..."
+log "[12/12] Generating credentials and starting service..."
 chown -R root:root /opt/gatekeeper
 
 if [ $PIP_SUCCESS -eq 1 ]; then
-    # Generate random passwords and write to credentials file (must be before systemctl start)
+    # Generate random passwords
     SP_PASS=$(/opt/gatekeeper/venv/bin/python3 -c "import secrets; import string; a=string.ascii_letters+string.digits+'!@%&*'; print(''.join(secrets.choice(a) for _ in range(16)))" 2>/dev/null || echo "SpPass$(date +%s)!")
     ADMIN_PASS=$(/opt/gatekeeper/venv/bin/python3 -c "import secrets; import string; a=string.ascii_letters+string.digits+'!@%&*'; print(''.join(secrets.choice(a) for _ in range(16)))" 2>/dev/null || echo "AdminPass$(date +%s)!")
     ROOT_PASS=$(/opt/gatekeeper/venv/bin/python3 -c "import secrets; import string; a=string.ascii_letters+string.digits+'!@%&*'; print(''.join(secrets.choice(a) for _ in range(16)))" 2>/dev/null || echo "RootPass$(date +%s)!")
@@ -408,19 +422,18 @@ admin:${ADMIN_PASS}
 root:${ROOT_PASS}
 CRED_EOF
     )
-    # Generate systemd EnvironmentFile to pass passwords to Python application
     cat > /opt/gatekeeper/.initial_credentials.env << ENVEOF
 GK_ADMIN_SP_PASSWORD=${SP_PASS}
 GK_ADMIN_PASSWORD=${ADMIN_PASS}
 ENVEOF
     chmod 600 /opt/gatekeeper/.initial_credentials.env
 
-    # Now start the service (EnvironmentFile is ready)
+    # Start the service
     systemctl daemon-reload 2>/dev/null || true
     systemctl enable gatekeeper.service 2>/dev/null || true
     systemctl start gatekeeper.service 2>/dev/null || true
 
-    # Only remove marker after everything succeeded
+    # Remove marker only after everything succeeded
     rm -f "$INSTALL_MARKER"
 
     log ""
