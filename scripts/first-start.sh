@@ -1,11 +1,16 @@
-#!/bin/bash
+#!/bin/sh
 # ============================================================
 # GateKeeper - First Boot Configuration Script
 # Called by systemd gatekeeper-setup.service (after reboot)
 # Completes post-install setup: SSL, venv, pip, database, services
 # ============================================================
 
-set -euo pipefail
+# Use bash if available, fall back to sh
+if [ -x /bin/bash ]; then
+    exec /bin/bash "$0" "$@"
+fi
+
+set -euo pipefail 2>/dev/null || set -e
 
 LOG_FILE="/opt/gatekeeper/logs/first-start.log"
 INSTALL_MARKER="/opt/gatekeeper/.install_pending"

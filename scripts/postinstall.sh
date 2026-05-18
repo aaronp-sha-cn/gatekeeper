@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # ============================================================
 # GateKeeper - Post-install Script (Installation Phase)
 # Executed during Debian late_command
@@ -17,6 +17,12 @@ log() {
 
 log "[GateKeeper] Post-install starting..."
 log "[GateKeeper] Configuring first-boot service..."
+
+# Ensure bash is available (needed by first-start.sh)
+apt-get install -y bash 2>/dev/null || true
+
+# Ensure first-start.sh is executable
+chmod +x /opt/gatekeeper/scripts/first-start.sh 2>/dev/null || true
 
 # Ensure systemd directories exist
 mkdir -p /etc/systemd/system
