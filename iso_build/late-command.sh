@@ -12,6 +12,10 @@
 # - chroot 执行 postinstall.sh 使用 /bin/sh（非 /bin/bash）
 # ============================================================
 
+# 调试日志
+DEBUG_LOG="/target/tmp/late-command-debug.log"
+echo "[$(date)] late_command started" >> "$DEBUG_LOG" 2>/dev/null || true
+
 set -e
 
 echo "[GateKeeper] ============================================"
@@ -283,14 +287,50 @@ echo "[GateKeeper] [6] 品牌标识已应用"
 #    此时 apt 源已在步骤 1 配置完成，postinstall.sh 可正常 apt-get update
 # ============================================================
 echo "[GateKeeper] [7] 执行 postinstall.sh（chroot）..."
+POSTINSTALL_SUCCESS=0
 if [ -f /target/opt/gatekeeper/scripts/postinstall.sh ]; then
     # 确保 postinstall.sh 可执行
     chmod +x /target/opt/gatekeeper/scripts/postinstall.sh
     # 使用 /bin/sh 执行（chroot 中可能还没有 bash）
-    chroot /target /bin/sh /opt/gatekeeper/scripts/postinstall.sh
-    echo "[GateKeeper] [7] postinstall.sh 执行完成"
+    if chroot /target /bin/sh /opt/gatekeeper/scripts/postinstall.sh; then
+        echo "[GateKeeper] [7] postinstall.sh 执行成功"
+        POSTINSTALL_SUCCESS=1
+    else
+        echo "[GateKeeper] [7] WARNING: postinstall.sh 执行失败，使用后备方案"
+    fi
 else
-    echo "[GateKeeper] [7] WARNING: postinstall.sh 未找到，跳过"
+    echo "[GateKeeper] [7] WARNING: postinstall.sh 未找到"
+fi
+
+# 后备方案：如果 postinstall.sh 失败，手动创建必要文件
+if [ "$POSTINSTALL_SUCCESS" -eq 0 ]; then
+    echo "[GateKeeper] [7] 执行后备方案..."
+    # 创建 systemd 服务
+    mkdir -p /target/etc/systemd/system
+    mkdir -p /target/etc/systemd/system/multi-user.target.wants
+    cat > /target/etc/systemd/system/gatekeeper-setup.service << 'SERVICE_EOF'
+[Unit]
+Description=GateKeeper - First Time Setup
+After=network-online.target network.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/gatekeeper/scripts/first-start.sh
+TimeoutStartSec=900
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target
+SERVICE_EOF
+    # 启用服务
+    ln -sf /target/etc/systemd/system/gatekeeper-setup.service \
+        /target/etc/systemd/system/multi-user.target.wants/gatekeeper-setup.service
+    # 创建安装标记
+    touch /target/opt/gatekeeper/.install_pending
+    echo "[GateKeeper] [7] 后备方案执行完成"
 fi
 
 # ============================================================
