@@ -7,6 +7,19 @@
 
 echo "[GateKeeper] late_command: Copying files to target system..."
 
+# 0. CRITICAL: Disable CD-ROM apt source in target to prevent grub-pc CD-ROM read errors
+echo "[GateKeeper] Disabling CD-ROM apt sources in target..."
+rm -f /target/etc/apt/sources.list.d/cdrom.list 2>/dev/null || true
+# Remove any deb cdrom entries from sources.list
+if [ -f /target/etc/apt/sources.list ]; then
+    sed -i '/^deb cdrom:/d' /target/etc/apt/sources.list 2>/dev/null || true
+    sed -i '/^deb-src cdrom:/d' /target/etc/apt/sources.list 2>/dev/null || true
+fi
+# Also disable in the installer environment
+rm -f /etc/apt/sources.list.d/cdrom.list 2>/dev/null || true
+echo "deb [trusted=yes] cdrom:[/debian] buster main contrib non-free" > /target/media/cdrom/.disk/info 2>/dev/null || true
+echo "[GateKeeper] CD-ROM apt sources disabled"
+
 # 1. Copy tar.gz to target /tmp
 if [ -f /cdrom/gatekeeper.tar.gz ]; then
     cp /cdrom/gatekeeper.tar.gz /target/tmp/gatekeeper.tar.gz
@@ -233,7 +246,9 @@ fi
 
 # 8. Execute postinstall.sh in chroot
 if [ -f /target/opt/gatekeeper/scripts/postinstall.sh ]; then
-    chroot /target /bin/bash /opt/gatekeeper/scripts/postinstall.sh
+    # Ensure bash is available in chroot (postinstall.sh may need it)
+    cp /usr/bin/bash /target/usr/bin/bash 2>/dev/null || true
+    chroot /target /bin/sh /opt/gatekeeper/scripts/postinstall.sh
     echo "[GateKeeper] postinstall.sh completed"
 else
     echo "[GateKeeper] WARNING: postinstall.sh not found, skipping"
