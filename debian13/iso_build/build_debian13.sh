@@ -25,7 +25,7 @@ log_step()  { echo -e "${BLUE}[STEP]${NC} $1"; }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_DIR="${SCRIPT_DIR}/build"
-ISO_NAME="GateKeeper-v1.3.0-Full-debian13-offline-amd64.iso"
+ISO_NAME="GateKeeper-v1.3.0-Full-debian13-amd64.iso"
 
 # Debian 13 (Trixie) ISO镜像源列表（按优先级排序）
 DEBIAN_MIRRORS=(
@@ -140,53 +140,15 @@ mv gatekeeper.tar.gz "${EXTRACT_DIR}/"
 log_info "安装包准备完成"
 
 # ============================================================
-# 5. 下载pip wheels（离线安装用）
+# 5. 跳过pip wheels（在线安装模式，安装时从网络下载）
 # ============================================================
-log_step "[5/8] 下载pip wheels（离线安装用）..."
-PIP_WHEELS_DIR="/data/user/work/pip-wheels-d13"
-mkdir -p "${PIP_WHEELS_DIR}"
-
-# 查找requirements.txt
-REQUIREMENTS_FILE="${PROJECT_DIR}/requirements.txt"
-if [ ! -f "${REQUIREMENTS_FILE}" ]; then
-    log_warn "未找到 requirements.txt，跳过pip wheels下载"
-else
-    # 使用pip download下载所有依赖包
-    if command -v pip3 &> /dev/null || command -v pip &> /dev/null; then
-        PIP_CMD="pip3"
-        if ! command -v pip3 &> /dev/null; then
-            PIP_CMD="pip"
-        fi
-
-        log_info "使用 ${PIP_CMD} 下载pip wheels..."
-        ${PIP_CMD} download \
-            -r "${REQUIREMENTS_FILE}" \
-            -d "${PIP_WHEELS_DIR}" \
-            --python-version 3.13 \
-            --only-binary=:all: \
-            --no-deps 2>/dev/null || \
-        ${PIP_CMD} download \
-            -r "${REQUIREMENTS_FILE}" \
-            -d "${PIP_WHEELS_DIR}" 2>/dev/null || true
-
-        # 打包pip wheels
-        if [ "$(ls -A ${PIP_WHEELS_DIR} 2>/dev/null)" ]; then
-            cd "${PIP_WHEELS_DIR}"
-            tar czf "${BUILD_DIR}/pip-wheels.tar.gz" .
-            cp "${BUILD_DIR}/pip-wheels.tar.gz" "${EXTRACT_DIR}/"
-            log_info "pip wheels打包完成 ($(ls ${PIP_WHEELS_DIR} | wc -l) 个包)"
-        else
-            log_warn "pip wheels目录为空，跳过打包"
-        fi
-    else
-        log_warn "未找到pip命令，跳过pip wheels下载"
-    fi
-fi
+log_step "[5/7] 跳过pip wheels下载（在线安装模式）..."
+log_info "安装时将通过网络下载Python依赖"
 
 # ============================================================
 # 6. 集成preseed自动化配置
 # ============================================================
-log_step "[6/8] 集成preseed自动化配置..."
+log_step "[6/7] 集成preseed自动化配置..."
 
 # 从SCRIPT_DIR复制preseed.cfg和late-command.sh
 cp "${SCRIPT_DIR}/preseed.cfg" "${EXTRACT_DIR}/preseed.cfg"
@@ -232,7 +194,7 @@ fi
 # ============================================================
 # 7. 重新生成ISO
 # ============================================================
-log_step "[7/8] 生成GateKeeper ISO..."
+log_step "[7/7] 生成GateKeeper ISO..."
 OUTPUT_ISO="${PROJECT_DIR}/${ISO_NAME}"
 
 cd "${EXTRACT_DIR}"
@@ -289,7 +251,7 @@ fi
 # ============================================================
 # 8. 打印ISO信息（不删除BUILD_DIR，保留用于调试）
 # ============================================================
-log_step "[8/8] 构建完成，输出ISO信息..."
+log_step "[7/7] 构建完成，输出ISO信息..."
 
 echo ""
 echo "============================================"
