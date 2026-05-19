@@ -41,7 +41,7 @@ echo "[GateKeeper] [0] CD-ROM apt 源已禁用"
 
 # ============================================================
 # 1. 配置 apt 源为 deb.debian.org
-#    必须在 postinstall.sh 之前配置，确保 chroot 中 apt-get 可用
+#    Debian 13 (Trixie) 使用 non-free-firmware 组件
 # ============================================================
 echo "[GateKeeper] [1] 配置 apt 源..."
 cat > /target/etc/apt/sources.list << 'APT_EOF'

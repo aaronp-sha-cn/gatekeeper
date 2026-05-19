@@ -29,12 +29,13 @@ log "[GateKeeper] ============================================"
 
 # ============================================================
 # 1. 更新 apt 软件包列表
-#    此时 sources.list 已由 late-command.sh 配置为 deb.debian.org
+#    此时 sources.list 已由 late-command.sh 配置
+#    离线环境下 apt-get update 会失败，但不影响后续步骤
 # ============================================================
 log "[GateKeeper] [1] 更新 apt 软件包列表..."
 apt-get update 2>&1 | tee -a "$LOG_FILE"
 if [ $? -ne 0 ]; then
-    log "[GateKeeper] [1] WARNING: apt-get update 失败，但继续执行"
+    log "[GateKeeper] [1] WARNING: apt-get update 失败（离线环境正常），继续执行"
 fi
 
 # ============================================================
