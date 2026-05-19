@@ -1,0 +1,307 @@
+{% extends "base.html" %}
+
+{% block title %}入侵检测{% endblock %}
+
+{% block content %}
+<!-- 统计卡片 -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>今日攻击次数</h3>
+        <div class="value" id="today-count">-</div>
+    </div>
+    <div class="stat-card">
+        <h3>本周攻击次数</h3>
+        <div class="value" id="week-count">-</div>
+    </div>
+    <div class="stat-card blocked">
+        <h3>已阻断IP数</h3>
+        <div class="value" id="blocked-count">-</div>
+    </div>
+    <div class="stat-card critical">
+        <h3>严重攻击</h3>
+        <div class="value" id="critical-count">-</div>
+    </div>
+</div>
+
+<div style="margin-bottom: 20px;">
+    <button class="btn btn-primary" onclick="updateRules('ids')">
+        <i class="fas fa-download"></i> 更新签名库
+    </button>
+</div>
+
+<!-- 阻断IP管理 -->
+<div class="section">
+    <h2>🚫 已阻断IP列表</h2>
+    <div class="blocked-ips" id="blocked-ips">
+        <p style="color: var(--text-muted);">加载中...</p>
+    </div>
+</div>
+
+<!-- IDS配置 -->
+<div class="section">
+    <h2>⚙️ IDS配置</h2>
+    <div class="config-form">
+        <div class="form-group">
+            <label>自动阻断</label>
+            <select id="auto-block">
+                <option value="true">启用</option>
+                <option value="false">禁用</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>阻断阈值 (次/5分钟)</label>
+            <input type="number" id="block-threshold" value="3" min="1" max="100">
+        </div>
+        <div class="form-group">
+            <label>阻断时长 (秒)</label>
+            <input type="number" id="block-duration" value="3600" min="60" step="60">
+        </div>
+        <div class="form-group" style="display: flex; align-items: flex-end;">
+            <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
+        </div>
+    </div>
+</div>
+
+<!-- 手动阻断 -->
+<div class="section">
+    <h2>🔒 手动阻断IP</h2>
+    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+        <input type="text" id="manual-ip" placeholder="输入IP地址" style="flex: 1; padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
+        <input type="text" id="manual-reason" placeholder="阻断原因" style="flex: 1; padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
+        <button class="btn btn-danger" onclick="blockIP()">阻断IP</button>
+    </div>
+</div>
+
+<!-- 攻击日志 -->
+<div class="section">
+    <h2>📋 最近攻击日志</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>时间</th>
+                <th>源IP</th>
+                <th>目标</th>
+                <th>攻击类型</th>
+                <th>严重程度</th>
+                <th>签名</th>
+                <th>状态</th>
+            </tr>
+        </thead>
+        <tbody id="attack-logs">
+            <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* IDS页面统计卡片 - 覆盖base布局为居中模式 */
+    .stat-card .value { color: #fca5a5; }
+
+    /* 区块标题 */
+    .section h2 { color: var(--primary); margin-bottom: 15px; font-size: 18px; }
+
+    /* 数据表格 */
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--text-muted); font-weight: 600; }
+    tr:hover { background: rgba(37, 99, 235, 0.05); }
+
+    /* 严重程度标签 */
+    .severity-critical { color: #fca5a5; font-weight: bold; }
+    .severity-high { color: #fcd34d; }
+    .severity-medium { color: #fcd34d; }
+    .severity-low { color: #86efac; }
+
+    /* 阻断IP列表 */
+    .blocked-ips { display: flex; flex-wrap: wrap; gap: 10px; }
+    .blocked-ip {
+        background: var(--border);
+        padding: 8px 12px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    /* IDS配置表单 */
+    .config-form {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 15px;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// 加载统计数据
+    function loadStats() {
+        fetch('/ids/api/stats')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    document.getElementById('today-count').textContent = data.data.today_count;
+                    document.getElementById('week-count').textContent = data.data.week_count;
+                    document.getElementById('blocked-count').textContent = (data.data.realtime && data.data.realtime.blocked_ips) || 0;
+                    document.getElementById('critical-count').textContent = (data.data.severity_distribution && data.data.severity_distribution.critical) || 0;
+                }
+            });
+    }
+
+    // 加载阻断IP列表
+    function loadBlockedIPs() {
+        var container = document.getElementById('blocked-ips');
+        container.innerHTML = '<p style="color: var(--text-muted);">加载中...</p>';
+        fetch('/ids/api/blocked-ips')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok' && data.data.ips.length > 0) {
+                    container.innerHTML = data.data.ips.map(ip => `
+                        <div class="blocked-ip">
+                            <span>${ip.ip}</span>
+                            <button class="btn btn-success" onclick="unblockIP('${ip.ip}')">解除</button>
+                        </div>
+                    `).join('');
+                } else {
+                    container.innerHTML = '<p style="color: var(--text-muted);">暂无被阻断的IP</p>';
+                }
+            })
+            .catch(e => {
+                container.innerHTML = '<p style="color: var(--danger);">加载失败: ' + e.message + '</p>';
+            });
+    }
+
+    // 加载攻击日志
+    function loadAttackLogs() {
+        var tbody = document.getElementById('attack-logs');
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>';
+        fetch('/ids/api/attacks?hours=24&per_page=20')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok' && data.data.logs.length > 0) {
+                    tbody.innerHTML = data.data.logs.map(log => `
+                        <tr>
+                            <td>${new Date(log.timestamp).toLocaleString()}</td>
+                            <td>${log.src_ip}</td>
+                            <td>${log.dst_ip}:${log.dst_port || '-'}</td>
+                            <td>${log.attack_type}</td>
+                            <td class="severity-${log.severity}">${log.severity}</td>
+                            <td>${log.signature}</td>
+                            <td>${log.is_blocked ? '已阻断' : '检测'}</td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">暂无攻击记录</td></tr>';
+                }
+            })
+            .catch(e => {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--danger);">加载失败: ' + e.message + '</td></tr>';
+            });
+    }
+
+    // 加载配置
+    function loadConfig() {
+        fetch('/ids/api/config')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    document.getElementById('auto-block').value = String(data.data.auto_block);
+                    document.getElementById('block-threshold').value = data.data.block_threshold;
+                    document.getElementById('block-duration').value = data.data.block_duration;
+                }
+            });
+    }
+
+    // 保存配置
+    function saveConfig() {
+        const config = {
+            auto_block: document.getElementById('auto-block').value === 'true',
+            block_threshold: parseInt(document.getElementById('block-threshold').value),
+            block_duration: parseInt(document.getElementById('block-duration').value)
+        };
+
+        fetch('/ids/api/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(config)
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            alert(data.status === 'ok' ? '配置已保存' : '保存失败: ' + data.message);
+        });
+    }
+
+    // 手动阻断IP
+    function blockIP() {
+        const ip = document.getElementById('manual-ip').value;
+        const reason = document.getElementById('manual-reason').value || '手动阻断';
+
+        if (!ip) { alert('请输入IP地址'); return; }
+
+        fetch('/ids/api/block', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ip, reason, duration: 3600})
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            alert(data.status === 'ok' ? 'IP已阻断' : '阻断失败: ' + data.message);
+            if (data.status === 'ok') {
+                loadBlockedIPs();
+                document.getElementById('manual-ip').value = '';
+            }
+        });
+    }
+
+    // 解除阻断
+    function unblockIP(ip) {
+        if (!confirm(`确定要解除IP ${ip} 的阻断吗？`)) return;
+
+        fetch('/ids/api/unblock', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ip})
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            alert(data.status === 'ok' ? '已解除阻断' : '解除失败: ' + data.message);
+            if (data.status === 'ok') loadBlockedIPs();
+        });
+    }
+
+    // 初始化
+    loadStats();
+    loadBlockedIPs();
+    loadAttackLogs();
+    loadConfig();
+
+    function updateRules(module) {
+        if (!confirm('确定要从远程源更新' + (module === 'ids' ? 'IDS签名库' : module === 'waf' ? 'WAF规则库' : 'DNS黑名单') + '？')) return;
+        showToast('正在更新...', 'info');
+        fetch('/rule-update/api/update/' + module, { method: 'POST', headers: {'Content-Type': 'application/json'} })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'ok') showToast('更新成功', 'success');
+                else showToast(data.message || '更新失败', 'error');
+            })
+            .catch(e => showToast('更新失败: ' + e.message, 'error'));
+    }
+
+    // 定时刷新
+    setInterval(loadStats, 30000);
+    setInterval(loadBlockedIPs, 30000);
+    setInterval(loadAttackLogs, 30000);
+</script>
+{% endblock %}

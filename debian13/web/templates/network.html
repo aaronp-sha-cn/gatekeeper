@@ -1,0 +1,330 @@
+{% extends "base.html" %}
+
+{% block title %}网络管理{% endblock %}
+
+{% block content %}
+<div class="network-page">
+    <!-- 网络接口 -->
+    <div class="section">
+        <div class="section-header">
+            <h3>网络接口</h3>
+            <button onclick="loadInterfaces()" class="btn btn-sm">刷新</button>
+        </div>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>名称</th>
+                    <th>IP地址</th>
+                    <th>MAC地址</th>
+                    <th>状态</th>
+                    <th>接收</th>
+                    <th>发送</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="interfaces-body">
+                <tr><td colspan="7" class="empty">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 接口配置模态框 -->
+    <div id="interface-config-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:1000; justify-content:center; align-items:center;">
+        <div style="background:#1e1e2e; border:1px solid #3a3a5c; border-radius:8px; padding:24px; width:480px; max-width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+            <h3 style="margin:0 0 20px 0; color:#cdd6f4; font-size:18px;">接口配置 - <span id="config-iface-name"></span></h3>
+            <div style="margin-bottom:14px;">
+                <label style="display:block; color:#a6adc8; font-size:13px; margin-bottom:4px;">IP地址</label>
+                <input type="text" id="config-ip" style="width:100%; padding:8px 12px; background:#181825; border:1px solid #3a3a5c; border-radius:4px; color:#cdd6f4; font-size:14px; box-sizing:border-box;" placeholder="例如: 192.168.1.100">
+            </div>
+            <div style="margin-bottom:14px;">
+                <label style="display:block; color:#a6adc8; font-size:13px; margin-bottom:4px;">子网掩码 / CIDR前缀</label>
+                <input type="text" id="config-netmask" style="width:100%; padding:8px 12px; background:#181825; border:1px solid #3a3a5c; border-radius:4px; color:#cdd6f4; font-size:14px; box-sizing:border-box;" placeholder="例如: 255.255.255.0 或 24">
+            </div>
+            <div style="margin-bottom:14px;">
+                <label style="display:block; color:#a6adc8; font-size:13px; margin-bottom:4px;">网关</label>
+                <input type="text" id="config-gateway" style="width:100%; padding:8px 12px; background:#181825; border:1px solid #3a3a5c; border-radius:4px; color:#cdd6f4; font-size:14px; box-sizing:border-box;" placeholder="例如: 192.168.1.1">
+            </div>
+            <div style="margin-bottom:14px;">
+                <label style="display:block; color:#a6adc8; font-size:13px; margin-bottom:4px;">DNS服务器</label>
+                <input type="text" id="config-dns" style="width:100%; padding:8px 12px; background:#181825; border:1px solid #3a3a5c; border-radius:4px; color:#cdd6f4; font-size:14px; box-sizing:border-box;" placeholder="例如: 8.8.8.8, 8.8.4.4">
+            </div>
+            <div style="margin-bottom:14px; display:flex; align-items:center; gap:10px;">
+                <label style="color:#a6adc8; font-size:13px;">启用接口</label>
+                <input type="checkbox" id="config-enabled" style="width:18px; height:18px; accent-color:#89b4fa;">
+            </div>
+            <div style="margin-bottom:14px;">
+                <label style="display:block; color:#a6adc8; font-size:13px; margin-bottom:4px;">MTU</label>
+                <input type="number" id="config-mtu" style="width:100%; padding:8px 12px; background:#181825; border:1px solid #3a3a5c; border-radius:4px; color:#cdd6f4; font-size:14px; box-sizing:border-box;" placeholder="例如: 1500" min="576" max="9000">
+            </div>
+            <div style="margin-bottom:20px;">
+                <label style="display:block; color:#a6adc8; font-size:13px; margin-bottom:4px;">描述</label>
+                <input type="text" id="config-description" style="width:100%; padding:8px 12px; background:#181825; border:1px solid #3a3a5c; border-radius:4px; color:#cdd6f4; font-size:14px; box-sizing:border-box;" placeholder="接口描述信息">
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:10px;">
+                <button onclick="closeInterfaceConfigModal()" style="padding:8px 20px; background:#313244; border:1px solid #45475a; border-radius:4px; color:#a6adc8; cursor:pointer; font-size:14px;">取消</button>
+                <button onclick="saveInterfaceConfig()" style="padding:8px 20px; background:#89b4fa; border:none; border-radius:4px; color:#1e1e2e; cursor:pointer; font-size:14px; font-weight:600;">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 防火墙规则 -->
+    <div class="section">
+        <div class="section-header">
+            <h3>防火墙规则</h3>
+            <button onclick="loadFirewallRules()" class="btn btn-sm">刷新</button>
+        </div>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>名称</th>
+                    <th>链</th>
+                    <th>协议</th>
+                    <th>源IP</th>
+                    <th>目标端口</th>
+                    <th>动作</th>
+                    <th>状态</th>
+                </tr>
+            </thead>
+            <tbody id="firewall-body">
+                <tr><td colspan="8" class="empty">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 添加路由 -->
+    <div class="section">
+        <div class="section-header">
+            <h3>静态路由</h3>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+            <div style="flex:1; min-width:160px;">
+                <label style="display:block; color:#a6adc8; font-size:13px; margin-bottom:4px;">目标网络</label>
+                <input type="text" id="route-target" style="width:100%; padding:8px 12px; background:#181825; border:1px solid #3a3a5c; border-radius:4px; color:#cdd6f4; font-size:14px; box-sizing:border-box;" placeholder="例如: 10.0.0.0">
+            </div>
+            <div style="flex:1; min-width:160px;">
+                <label style="display:block; color:#a6adc8; font-size:13px; margin-bottom:4px;">子网掩码</label>
+                <input type="text" id="route-netmask" style="width:100%; padding:8px 12px; background:#181825; border:1px solid #3a3a5c; border-radius:4px; color:#cdd6f4; font-size:14px; box-sizing:border-box;" placeholder="例如: 255.255.255.0">
+            </div>
+            <div style="flex:1; min-width:160px;">
+                <label style="display:block; color:#a6adc8; font-size:13px; margin-bottom:4px;">网关</label>
+                <input type="text" id="route-gateway" style="width:100%; padding:8px 12px; background:#181825; border:1px solid #3a3a5c; border-radius:4px; color:#cdd6f4; font-size:14px; box-sizing:border-box;" placeholder="例如: 192.168.1.1">
+            </div>
+            <button onclick="saveRoute()" class="btn btn-primary" style="height:38px;">添加路由</button>
+        </div>
+    </div>
+
+    <!-- 端口扫描 -->
+    <div class="section">
+        <div class="section-header">
+            <h3>端口扫描</h3>
+        </div>
+        <div class="scan-form">
+            <input type="text" id="scan-target" placeholder="输入目标IP或域名">
+            <button onclick="startScan()" class="btn btn-primary">扫描</button>
+        </div>
+        <div id="scan-results" class="scan-results"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var currentConfigIface = '';
+
+function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function formatBytes(bytes) {
+    if (bytes === 0 || !bytes) return '0 B';
+    var k = 1024;
+    var sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    var i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function initPage() {
+    loadInterfaces();
+    loadFirewallRules();
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initPage);
+} else {
+    initPage();
+}
+document.addEventListener('pjax:contentloaded', initPage);
+
+function loadInterfaces() {
+    var tbody = document.getElementById('interfaces-body');
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">加载中...</td></tr>';
+    fetch('/network/api/interfaces')
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok' && Array.isArray(data.data)) {
+                if (data.data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无网络接口</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.data.map(function(i) {
+                    return '<tr>' +
+                        '<td>' + escapeHtml(i.name) + '</td>' +
+                        '<td>' + escapeHtml(i.ip_address || '-') + '</td>' +
+                        '<td>' + escapeHtml(i.mac_address || '-') + '</td>' +
+                        '<td><span class="status ' + (i.is_up ? 'status-up' : 'status-down') + '">' + (i.is_up ? 'UP' : 'DOWN') + '</span></td>' +
+                        '<td>' + formatBytes(i.rx_bytes) + '</td>' +
+                        '<td>' + formatBytes(i.tx_bytes) + '</td>' +
+                        '<td><button onclick="openInterfaceConfigModal(\'' + escapeHtml(i.name) + '\', \'' + escapeHtml(i.ip_address || '') + '\', \'' + escapeHtml(i.netmask || '') + '\', \'' + escapeHtml(i.gateway || '') + '\', \'' + escapeHtml(i.dns || '') + '\', ' + i.is_up + ', ' + (i.mtu || 1500) + ', \'' + escapeHtml(i.description || '') + '\')" class="btn btn-sm">配置</button></td>' +
+                    '</tr>';
+                }).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无网络接口数据</td></tr>';
+            }
+        })
+        .catch(function(e) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty">加载失败: ' + escapeHtml(e.message) + ' <button onclick="loadInterfaces()" class="btn btn-sm" style="margin-left:8px;">重试</button></td></tr>';
+        });
+}
+
+function openInterfaceConfigModal(name, ip, netmask, gateway, dns, enabled, mtu, description) {
+    currentConfigIface = name;
+    document.getElementById('config-iface-name').textContent = name;
+    document.getElementById('config-ip').value = ip;
+    document.getElementById('config-netmask').value = netmask;
+    document.getElementById('config-gateway').value = gateway;
+    document.getElementById('config-dns').value = dns;
+    document.getElementById('config-enabled').checked = enabled;
+    document.getElementById('config-mtu').value = mtu;
+    document.getElementById('config-description').value = description;
+    document.getElementById('interface-config-modal').style.display = 'flex';
+}
+
+function closeInterfaceConfigModal() {
+    document.getElementById('interface-config-modal').style.display = 'none';
+    currentConfigIface = '';
+}
+
+function saveInterfaceConfig() {
+    if (!currentConfigIface) return;
+
+    const dnsRaw = document.getElementById('config-dns').value;
+    const dnsServers = dnsRaw ? dnsRaw.split(',').map(s => s.trim()).filter(s => s) : [];
+
+    const payload = {
+        name: currentConfigIface,
+        ip_address: document.getElementById('config-ip').value,
+        netmask: document.getElementById('config-netmask').value,
+        gateway: document.getElementById('config-gateway').value,
+        dns: dnsServers,
+        enabled: document.getElementById('config-enabled').checked,
+        mtu: parseInt(document.getElementById('config-mtu').value) || 1500,
+        description: document.getElementById('config-description').value,
+    };
+
+    fetch('/network/api/interfaces/config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    })
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(data => {
+        if (data.status === 'ok') {
+            closeInterfaceConfigModal();
+            loadInterfaces();
+        } else {
+            alert('保存失败: ' + data.message);
+        }
+    });
+}
+
+function loadFirewallRules() {
+    var tbody = document.getElementById('firewall-body');
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">加载中...</td></tr>';
+    fetch('/network/api/firewall/rules')
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok' && Array.isArray(data.data)) {
+                if (data.data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无规则</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.data.map(function(r) {
+                    return '<tr>' +
+                        '<td>' + escapeHtml(String(r.id)) + '</td>' +
+                        '<td>' + escapeHtml(r.name) + '</td>' +
+                        '<td>' + escapeHtml(r.chain) + '</td>' +
+                        '<td>' + escapeHtml(r.protocol) + '</td>' +
+                        '<td>' + escapeHtml(r.source_ip || '*') + '</td>' +
+                        '<td>' + escapeHtml(r.dest_port || '*') + '</td>' +
+                        '<td><span class="badge badge-' + (r.action || '').toLowerCase() + '">' + escapeHtml(r.action) + '</span></td>' +
+                        '<td><span class="status ' + (r.is_enabled ? 'status-up' : 'status-down') + '">' + (r.is_enabled ? '启用' : '禁用') + '</span></td>' +
+                    '</tr>';
+                }).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无规则数据</td></tr>';
+            }
+        })
+        .catch(function(e) {
+            tbody.innerHTML = '<tr><td colspan="8" class="empty">加载失败: ' + escapeHtml(e.message) + ' <button onclick="loadFirewallRules()" class="btn btn-sm" style="margin-left:8px;">重试</button></td></tr>';
+        });
+}
+
+function saveRoute() {
+    const target = document.getElementById('route-target').value;
+    const netmask = document.getElementById('route-netmask').value;
+    const gateway = document.getElementById('route-gateway').value;
+
+    if (!target || !netmask || !gateway) {
+        alert('请填写完整的路由信息');
+        return;
+    }
+
+    fetch('/network/api/routes', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({target, netmask, gateway})
+    })
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(data => {
+        if (data.status === 'ok') {
+            document.getElementById('route-target').value = '';
+            document.getElementById('route-netmask').value = '';
+            document.getElementById('route-gateway').value = '';
+            alert('路由添加成功');
+        } else {
+            alert('添加失败: ' + data.message);
+        }
+    });
+}
+
+function startScan() {
+    const target = document.getElementById('scan-target').value;
+    if (!target) { alert('请输入扫描目标'); return; }
+
+    document.getElementById('scan-results').innerHTML = '<p>扫描中...</p>';
+
+    fetch('/network/api/scan', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({target, type: 'port_scan'})
+    })
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(data => {
+        if (data.status === 'ok') {
+            const ports = data.data.open_ports || [];
+            document.getElementById('scan-results').innerHTML = `
+                <p>扫描完成: ${data.data.ip} - 发现 ${ports.length} 个开放端口</p>
+                <table class="data-table">
+                    <thead><tr><th>端口</th><th>服务</th><th>状态</th></tr></thead>
+                    <tbody>${ports.map(p => `
+                        <tr><td>${p.port}</td><td>${p.service}</td><td class="status-up">开放</td></tr>
+                    `).join('')}</tbody>
+                </table>
+            `;
+        }
+    });
+}
+</script>
+{% endblock %}

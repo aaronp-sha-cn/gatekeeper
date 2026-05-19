@@ -1,0 +1,64 @@
+version: "3.8"
+
+services:
+  gatekeeper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gatekeeper
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+      - "8080:8080"
+    volumes:
+      - gatekeeper-data:/opt/gatekeeper/data
+      - gatekeeper-logs:/opt/gatekeeper/logs
+      - gatekeeper-models:/opt/gatekeeper/models
+      - gatekeeper-uploads:/opt/gatekeeper/uploads
+      - gatekeeper-backups:/opt/gatekeeper/backups
+    environment:
+      - GK_WEB_PORT=8080
+      - GK_WEB_SSL_ENABLED=false
+      - GK_WEB_SECRET_KEY=${GK_WEB_SECRET_KEY:-change-me-in-production}
+      - GK_DB_DRIVER=sqlite
+      - GK_LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - gatekeeper-net
+
+  # Uncomment below to use PostgreSQL instead of SQLite
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: gatekeeper-db
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_USER: gatekeeper
+  #     POSTGRES_PASSWORD: gatekeeper_secret
+  #     POSTGRES_DB: gatekeeper
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U gatekeeper"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - gatekeeper-net
+
+volumes:
+  gatekeeper-data:
+  gatekeeper-logs:
+  gatekeeper-models:
+  gatekeeper-uploads:
+  gatekeeper-backups:
+  # postgres-data:
+
+networks:
+  gatekeeper-net:
+    driver: bridge

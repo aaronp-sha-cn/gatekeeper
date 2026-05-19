@@ -1,0 +1,744 @@
+{% extends "base.html" %}
+
+{% block title %}QoS流量整形{% endblock %}
+
+{% block content %}
+<!-- 统计概览 -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>规则总数</h3>
+        <div class="value" id="stat-total-rules">-</div>
+    </div>
+    <div class="stat-card enabled">
+        <h3>已启用规则</h3>
+        <div class="value" id="stat-enabled-rules">-</div>
+    </div>
+    <div class="stat-card bandwidth">
+        <h3>当前带宽使用</h3>
+        <div class="value" id="stat-bandwidth">-</div>
+        <div class="sub-text" id="stat-bandwidth-detail"></div>
+    </div>
+    <div class="stat-card shaped">
+        <h3>整形流量</h3>
+        <div class="value" id="stat-shaped">-</div>
+    </div>
+</div>
+
+<!-- 接口带宽使用图表 -->
+<div class="section">
+    <h2>接口带宽使用</h2>
+    <div style="display: flex; gap: 10px; margin-bottom: 15px; align-items: center; flex-wrap: wrap;">
+        <label style="color: var(--text-muted); font-size: 13px;">选择接口:</label>
+        <select id="bandwidth-interface" onchange="loadBandwidthChart()" style="padding: 6px 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 13px;">
+            <option value="">加载中...</option>
+        </select>
+        <div style="margin-left: auto; display: flex; gap: 6px;">
+            <button class="btn btn-sm bw-range-btn active" data-range="30" onclick="setBwRange(30, this)">30秒</button>
+            <button class="btn btn-sm bw-range-btn" data-range="60" onclick="setBwRange(60, this)">1分钟</button>
+            <button class="btn btn-sm bw-range-btn" data-range="120" onclick="setBwRange(120, this)">2分钟</button>
+            <button class="btn btn-sm bw-range-btn" data-range="300" onclick="setBwRange(300, this)">5分钟</button>
+        </div>
+    </div>
+    <!-- 实时统计面板 -->
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px;">
+        <div class="bw-stat-card">
+            <div class="bw-stat-label">当前入站</div>
+            <div class="bw-stat-value" id="bw-current-rx" style="color: #60a5fa;">--</div>
+        </div>
+        <div class="bw-stat-card">
+            <div class="bw-stat-label">当前出站</div>
+            <div class="bw-stat-value" id="bw-current-tx" style="color: #f97316;">--</div>
+        </div>
+        <div class="bw-stat-card">
+            <div class="bw-stat-label">峰值入站</div>
+            <div class="bw-stat-value" id="bw-peak-rx" style="color: #60a5fa;">--</div>
+        </div>
+        <div class="bw-stat-card">
+            <div class="bw-stat-label">峰值出站</div>
+            <div class="bw-stat-value" id="bw-peak-tx" style="color: #f97316;">--</div>
+        </div>
+    </div>
+    <div style="position: relative; height: 300px; background: var(--bg-card); border-radius: 8px; padding: 15px; border: 1px solid var(--border);">
+        <canvas id="bandwidth-chart"></canvas>
+    </div>
+</div>
+
+<!-- 预设策略 -->
+<div class="section">
+    <h2>预设策略</h2>
+    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <select id="preset-select" style="padding: 8px 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); min-width: 200px;">
+            <option value="">-- 选择预设策略 --</option>
+            <option value="office">办公网络策略</option>
+            <option value="gaming">游戏加速策略</option>
+            <option value="balanced">均衡策略</option>
+            <option value="strict">严格限速策略</option>
+        </select>
+        <select id="preset-interface" style="padding: 8px 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
+            <option value="">加载中...</option>
+        </select>
+        <button class="btn btn-primary" onclick="applyPreset()">应用预设策略</button>
+        <span id="preset-desc" style="color: var(--text-muted); font-size: 13px;"></span>
+    </div>
+</div>
+
+<!-- 操作按钮 -->
+<div class="section">
+    <h2>规则操作</h2>
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <button class="btn btn-success" onclick="applyAllRules()">应用所有规则</button>
+        <button class="btn btn-danger" onclick="clearTcRules()">清除tc规则</button>
+        <button class="btn btn-info" onclick="showTcStatus()">查看tc状态</button>
+    </div>
+</div>
+
+<!-- 规则列表 -->
+<div class="section">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+        <h2 style="margin: 0;">QoS规则列表</h2>
+        <div style="display: flex; gap: 6px; align-items: center;">
+            <span style="color: var(--text-muted); font-size: 13px;">快速部署:</span>
+            <button class="btn btn-sm preset-qos-btn" onclick="applyQosPreset('office')">办公网络</button>
+            <button class="btn btn-sm preset-qos-btn" onclick="applyQosPreset('gaming')">游戏加速</button>
+            <button class="btn btn-sm preset-qos-btn" onclick="applyQosPreset('balanced')">均衡策略</button>
+        </div>
+    </div>
+    <div style="overflow-x: auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>名称</th>
+                    <th>接口</th>
+                    <th>方向</th>
+                    <th>匹配类型</th>
+                    <th>匹配值</th>
+                    <th>优先级</th>
+                    <th>带宽限制</th>
+                    <th>突发限制</th>
+                    <th>延迟</th>
+                    <th>动作</th>
+                    <th>命中</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="rules-table">
+                <tr><td colspan="14" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 添加规则表单 -->
+<div class="section">
+    <h2>添加规则</h2>
+    <div class="config-form">
+        <div class="form-group">
+            <label>规则名称</label>
+            <input type="text" id="rule-name" placeholder="输入规则名称" style="padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); width: 100%;">
+        </div>
+        <div class="form-group">
+            <label>网络接口</label>
+            <select id="rule-interface" style="padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); width: 100%;">
+                <option value="">加载中...</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>方向</label>
+            <select id="rule-direction" style="padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); width: 100%;">
+                <option value="egress">出站 (egress)</option>
+                <option value="ingress">入站 (ingress)</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>匹配类型</label>
+            <select id="rule-match-type" style="padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); width: 100%;">
+                <option value="ip">IP地址</option>
+                <option value="port">端口</option>
+                <option value="protocol">协议</option>
+                <option value="mac">MAC地址</option>
+                <option value="app">应用</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>匹配值</label>
+            <input type="text" id="rule-match-value" placeholder="如: 192.168.1.0/24, 80,443, tcp" style="padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); width: 100%;">
+        </div>
+        <div class="form-group">
+            <label>优先级 (0-100)</label>
+            <input type="number" id="rule-priority" value="50" min="0" max="100" style="padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); width: 100%;">
+        </div>
+        <div class="form-group">
+            <label>带宽限制 (Mbps, 0=不限)</label>
+            <input type="number" id="rule-bandwidth" value="0" min="0" step="1" style="padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); width: 100%;">
+        </div>
+        <div class="form-group">
+            <label>突发限制 (Mbps, 0=不限)</label>
+            <input type="number" id="rule-burst" value="0" min="0" step="1" style="padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); width: 100%;">
+        </div>
+        <div class="form-group">
+            <label>延迟限制 (ms, 0=不限)</label>
+            <input type="number" id="rule-latency" value="0" min="0" step="1" style="padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); width: 100%;">
+        </div>
+        <div class="form-group">
+            <label>动作</label>
+            <select id="rule-action" style="padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); width: 100%;">
+                <option value="shape">整形 (shape)</option>
+                <option value="prioritize">优先 (prioritize)</option>
+                <option value="block">阻断 (block)</option>
+            </select>
+        </div>
+        <div class="form-group" style="display: flex; align-items: flex-end;">
+            <button class="btn btn-primary" onclick="addRule()">添加规则</button>
+        </div>
+    </div>
+</div>
+
+<!-- tc状态详情（隐藏） -->
+<div class="section" id="tc-status-section" style="display: none;">
+    <h2>tc规则状态</h2>
+    <pre id="tc-status-content" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 15px; color: var(--text); font-size: 12px; overflow-x: auto; white-space: pre-wrap; max-height: 400px; overflow-y: auto;"></pre>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 统计卡片 */
+    .stat-card .value { color: #60a5fa; }
+    .stat-card .sub-text { color: var(--text-muted); font-size: 12px; margin-top: 4px; }
+    .stat-card.enabled .value { color: #86efac; }
+    .stat-card.bandwidth .value { color: #fcd34d; }
+    .stat-card.shaped .value { color: #c4b5fd; }
+
+    /* 区块标题 */
+    .section h2 { color: var(--primary); margin-bottom: 15px; font-size: 18px; }
+    .section { margin-bottom: 25px; }
+
+    /* 数据表格 */
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; white-space: nowrap; }
+    th { color: var(--text-muted); font-weight: 600; }
+    tr:hover { background: rgba(37, 99, 235, 0.05); }
+
+    /* 配置表单 */
+    .config-form {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+    }
+    .form-group label {
+        display: block;
+        color: var(--text-muted);
+        font-size: 13px;
+        margin-bottom: 5px;
+    }
+
+    /* 状态标签 */
+    .tag { padding: 2px 8px; border-radius: 3px; font-size: 12px; font-weight: 600; }
+    .tag-shape { background: rgba(96,165,250,0.2); color: #60a5fa; }
+    .tag-prioritize { background: rgba(134,239,172,0.2); color: #86efac; }
+    .tag-block { background: rgba(252,165,165,0.2); color: #fca5a5; }
+    .tag-enabled { background: rgba(134,239,172,0.2); color: #86efac; }
+    .tag-disabled { background: rgba(148,163,184,0.2); color: #94a3b8; }
+    .tag-ingress { background: rgba(253,224,71,0.2); color: #fde047; }
+    .tag-egress { background: rgba(196,181,253,0.2); color: #c4b5fd; }
+
+    /* 按钮 */
+    .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-danger { background: #dc2626; color: white; }
+    .btn-success { background: #16a34a; color: white; }
+    .btn-info { background: #0891b2; color: white; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .btn:hover { opacity: 0.85; }
+    .bw-stat-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 14px;
+        text-align: center;
+    }
+    .bw-stat-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+    .bw-stat-value { font-size: 18px; font-weight: 600; font-family: 'Courier New', monospace; }
+    .bw-range-btn {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+        cursor: pointer;
+        border-radius: 4px;
+        padding: 4px 10px;
+        font-size: 11px;
+    }
+    .bw-range-btn.active {
+        background: #2563eb;
+        border-color: #2563eb;
+        color: #fff;
+    }
+    .bw-range-btn:hover { opacity: 0.85; }
+    .preset-qos-btn {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+        cursor: pointer;
+        border-radius: 4px;
+        padding: 4px 10px;
+        font-size: 11px;
+    }
+    .preset-qos-btn:hover { border-color: var(--primary); color: var(--text); }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+    function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// ---- 带宽图表 ----
+    let MAX_BW_POINTS = 30;
+    const bwLabels = [];
+    const bwRxData = [];
+    const bwTxData = [];
+    let bwChart = null;
+
+    function setBwRange(points, btn) {
+        MAX_BW_POINTS = points;
+        // 裁剪现有数据
+        while (bwLabels.length > MAX_BW_POINTS) {
+            bwLabels.shift();
+            bwRxData.shift();
+            bwTxData.shift();
+        }
+        // 更新按钮样式
+        document.querySelectorAll('.bw-range-btn').forEach(b => b.classList.remove('active'));
+        if (btn) btn.classList.add('active');
+        bwChart.update();
+    }
+
+    function updateBwStats() {
+        const rx = bwRxData.length > 0 ? bwRxData[bwRxData.length - 1] : 0;
+        const tx = bwTxData.length > 0 ? bwTxData[bwTxData.length - 1] : 0;
+        const peakRx = bwRxData.length > 0 ? Math.max(...bwRxData) : 0;
+        const peakTx = bwTxData.length > 0 ? Math.max(...bwTxData) : 0;
+        document.getElementById('bw-current-rx').textContent = rx.toFixed(2) + ' Mbps';
+        document.getElementById('bw-current-tx').textContent = tx.toFixed(2) + ' Mbps';
+        document.getElementById('bw-peak-rx').textContent = peakRx.toFixed(2) + ' Mbps';
+        document.getElementById('bw-peak-tx').textContent = peakTx.toFixed(2) + ' Mbps';
+    }
+
+    function initBandwidthChart() {
+        const ctx = document.getElementById('bandwidth-chart').getContext('2d');
+        bwChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: bwLabels,
+                datasets: [
+                    {
+                        label: '入站 (Mbps)',
+                        data: bwRxData,
+                        borderColor: '#60a5fa',
+                        backgroundColor: 'rgba(96,165,250,0.12)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        pointHoverBackgroundColor: '#60a5fa',
+                    },
+                    {
+                        label: '出站 (Mbps)',
+                        data: bwTxData,
+                        borderColor: '#f97316',
+                        backgroundColor: 'rgba(249,115,22,0.12)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        pointHoverBackgroundColor: '#f97316',
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 200 },
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: {
+                        display: true,
+                        ticks: { color: '#64748b', maxTicksLimit: 8, font: { size: 10 } },
+                        grid: { color: 'rgba(100,116,139,0.08)' },
+                    },
+                    y: {
+                        display: true,
+                        beginAtZero: true,
+                        ticks: { color: '#64748b', font: { size: 10 }, callback: function(v) { return v + ' Mbps'; } },
+                        grid: { color: 'rgba(100,116,139,0.12)' },
+                        title: { display: false },
+                    },
+                },
+                plugins: {
+                    legend: { labels: { color: '#94a3b8', font: { size: 11 }, usePointStyle: true, pointStyle: 'circle' } },
+                    tooltip: {
+                        backgroundColor: 'rgba(15,23,42,0.95)',
+                        borderColor: '#30363d',
+                        borderWidth: 1,
+                        titleColor: '#e2e8f0',
+                        bodyColor: '#94a3b8',
+                        callbacks: {
+                            label: function(ctx) {
+                                return ctx.dataset.label + ': ' + (ctx.parsed.y || 0).toFixed(2) + ' Mbps';
+                            }
+                        }
+                    },
+                },
+            },
+        });
+    }
+
+    // ---- 动态加载接口列表 ----
+    function loadInterfaces() {
+        fetch('/qos/api/interfaces')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok' && data.data && data.data.length > 0) {
+                    const interfaces = data.data;
+                    const selects = [
+                        document.getElementById('bandwidth-interface'),
+                        document.getElementById('preset-interface'),
+                        document.getElementById('rule-interface')
+                    ];
+                    selects.forEach(sel => {
+                        if (sel) {
+                            sel.innerHTML = '';
+                            interfaces.forEach(iface => {
+                                const opt = document.createElement('option');
+                                opt.value = iface.name || iface;
+                                opt.textContent = iface.name || iface;
+                                sel.appendChild(opt);
+                            });
+                        }
+                    });
+                }
+            })
+            .catch(err => console.error('加载接口列表失败:', err));
+    }
+
+    function loadBandwidthChart() {
+        const iface = document.getElementById('bandwidth-interface').value;
+        fetch('/qos/api/bandwidth?interface=' + encodeURIComponent(iface))
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok' && !data.data.error) {
+                    const d = data.data;
+                    const now = new Date();
+                    const label = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0') + ':' + now.getSeconds().toString().padStart(2,'0');
+
+                    bwLabels.push(label);
+                    bwRxData.push(parseFloat(d.rx_rate_mbps) || 0);
+                    bwTxData.push(parseFloat(d.tx_rate_mbps) || 0);
+
+                    if (bwLabels.length > MAX_BW_POINTS) {
+                        bwLabels.shift();
+                        bwRxData.shift();
+                        bwTxData.shift();
+                    }
+
+                    bwChart.update();
+                    updateBwStats();
+                }
+            });
+    }
+
+    // ---- 统计数据 ----
+    function loadStats() {
+        fetch('/qos/api/rules')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const rules = data.data;
+                    const total = rules.length;
+                    const enabled = rules.filter(r => r.enabled).length;
+                    document.getElementById('stat-total-rules').textContent = total;
+                    document.getElementById('stat-enabled-rules').textContent = enabled;
+                }
+            });
+
+        // 获取带宽
+        fetch('/qos/api/bandwidth?interface=eth0')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok' && !data.data.error) {
+                    const d = data.data;
+                    const totalRate = parseFloat(d.total_rate_mbps).toFixed(2);
+                    document.getElementById('stat-bandwidth').textContent = totalRate + ' Mbps';
+                    document.getElementById('stat-bandwidth-detail').textContent =
+                        'RX: ' + (parseFloat(d.rx_rate_mbps).toFixed(2)) + ' / TX: ' + (parseFloat(d.tx_rate_mbps).toFixed(2));
+                } else {
+                    document.getElementById('stat-bandwidth').textContent = 'N/A';
+                }
+            });
+
+        // 获取整形统计
+        fetch('/qos/api/stats')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok' && data.data.length > 0) {
+                    const totalShaped = data.data.reduce((sum, s) => sum + (s.shaped_bytes || 0), 0);
+                    const totalDropped = data.data.reduce((sum, s) => sum + (s.dropped_bytes || 0), 0);
+                    const formatted = formatBytes(totalShaped);
+                    document.getElementById('stat-shaped').textContent = formatted;
+                    if (totalDropped > 0) {
+                        document.getElementById('stat-shaped').textContent += ' (丢弃: ' + formatBytes(totalDropped) + ')';
+                    }
+                } else {
+                    document.getElementById('stat-shaped').textContent = '0 B';
+                }
+            });
+    }
+
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    // ---- 规则管理 ----
+    function applyQosPreset(name) {
+        var names = {office: '办公网络策略', gaming: '游戏加速策略', balanced: '均衡策略'};
+        if (!confirm('确定要应用"' + (names[name] || name) + '"预设吗？这将清除现有的所有QoS规则。')) return;
+        fetch('/qos/api/presets/' + encodeURIComponent(name), { method: 'POST' })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(function(data) {
+                if (data.status === 'ok') {
+                    showToast(data.message || '预设已应用');
+                    loadRules();
+                } else {
+                    showToast(data.message || '应用预设失败', 'error');
+                }
+            })
+            .catch(function(e) { showToast('请求失败: ' + e.message, 'error'); });
+    }
+
+    function loadRules() {
+        fetch('/qos/api/rules')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                const tbody = document.getElementById('rules-table');
+                if (data.status === 'ok' && data.data.length > 0) {
+                    tbody.innerHTML = data.data.map(rule => {
+                        const dirTag = '<span class="tag tag-' + rule.direction + '">' + rule.direction + '</span>';
+                        const actionLabels = { shape: '整形', prioritize: '优先', block: '阻断' };
+                        const actionClass = { shape: 'tag-shape', prioritize: 'tag-prioritize', block: 'tag-block' };
+                        const matchLabels = { ip: 'IP', port: '端口', protocol: '协议', mac: 'MAC', app: '应用' };
+                        const statusClass = rule.enabled ? 'tag-enabled' : 'tag-disabled';
+                        const statusText = rule.enabled ? '启用' : '禁用';
+                        const bwText = rule.bandwidth_limit > 0 ? rule.bandwidth_limit + ' Mbps' : '不限';
+                        const burstText = rule.burst_limit > 0 ? rule.burst_limit + ' Mbps' : '不限';
+                        const latencyText = rule.latency_ms > 0 ? rule.latency_ms + ' ms' : '-';
+                        return '<tr>' +
+                            '<td>' + rule.id + '</td>' +
+                            '<td>' + rule.name + '</td>' +
+                            '<td>' + rule.interface + '</td>' +
+                            '<td>' + dirTag + '</td>' +
+                            '<td>' + (matchLabels[rule.match_type] || rule.match_type) + '</td>' +
+                            '<td style="max-width:150px; overflow:hidden; text-overflow:ellipsis;" title="' + rule.match_value + '">' + rule.match_value + '</td>' +
+                            '<td>' + rule.priority + '</td>' +
+                            '<td>' + bwText + '</td>' +
+                            '<td>' + burstText + '</td>' +
+                            '<td>' + latencyText + '</td>' +
+                            '<td><span class="tag ' + (actionClass[rule.action] || '') + '">' + (actionLabels[rule.action] || rule.action) + '</span></td>' +
+                            '<td>' + rule.hit_count + '</td>' +
+                            '<td><span class="tag ' + statusClass + '">' + statusText + '</span></td>' +
+                            '<td>' +
+                                '<button class="btn btn-sm ' + (rule.enabled ? 'btn-danger' : 'btn-success') + '" onclick="toggleRule(' + rule.id + ', ' + !rule.enabled + ')">' + (rule.enabled ? '禁用' : '启用') + '</button>' +
+                                '<button class="btn btn-sm btn-danger" onclick="deleteRule(' + rule.id + ')" style="margin-left:4px;">删除</button>' +
+                            '</td>' +
+                        '</tr>';
+                    }).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="14" style="text-align: center; color: var(--text-muted);">暂无规则</td></tr>';
+                }
+            });
+    }
+
+    function addRule() {
+        const name = document.getElementById('rule-name').value;
+        const interface = document.getElementById('rule-interface').value;
+        const direction = document.getElementById('rule-direction').value;
+        const match_type = document.getElementById('rule-match-type').value;
+        const match_value = document.getElementById('rule-match-value').value;
+        const priority = parseInt(document.getElementById('rule-priority').value);
+        const bandwidth_limit = parseFloat(document.getElementById('rule-bandwidth').value);
+        const burst_limit = parseFloat(document.getElementById('rule-burst').value);
+        const latency_ms = parseFloat(document.getElementById('rule-latency').value);
+        const action = document.getElementById('rule-action').value;
+
+        if (!name) { alert('请输入规则名称'); return; }
+        if (!match_value) { alert('请输入匹配值'); return; }
+
+        fetch('/qos/api/rules', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                name, interface, direction, match_type, match_value,
+                priority, bandwidth_limit, burst_limit, latency_ms, action
+            })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            alert(data.status === 'ok' ? '规则已添加' : '添加失败: ' + data.message);
+            if (data.status === 'ok') {
+                document.getElementById('rule-name').value = '';
+                document.getElementById('rule-match-value').value = '';
+                loadRules();
+                loadStats();
+            }
+        });
+    }
+
+    function deleteRule(id) {
+        if (!confirm('确定要删除该规则吗？')) return;
+        fetch('/qos/api/rules/' + id, { method: 'DELETE' })
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                alert(data.status === 'ok' ? '规则已删除' : '删除失败: ' + data.message);
+                if (data.status === 'ok') {
+                    loadRules();
+                    loadStats();
+                }
+            });
+    }
+
+    function toggleRule(id, enabled) {
+        fetch('/qos/api/rules/' + id + '/toggle', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ enabled })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                loadRules();
+                loadStats();
+            }
+        });
+    }
+
+    // ---- 应用/清除规则 ----
+    function applyAllRules() {
+        if (!confirm('确定要应用所有启用的规则到系统吗？这将修改tc配置。')) return;
+        fetch('/qos/api/apply', { method: 'POST' })
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    alert('规则已应用: ' + data.data.message);
+                } else {
+                    alert('应用失败: ' + JSON.stringify(data.data.errors || data.message));
+                }
+            });
+    }
+
+    function clearTcRules() {
+        if (!confirm('确定要清除所有tc规则吗？')) return;
+        fetch('/qos/api/clear', { method: 'POST' })
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                alert(data.status === 'ok' ? 'tc规则已清除: ' + data.data.message : '清除失败: ' + data.message);
+            });
+    }
+
+    // ---- tc状态 ----
+    function showTcStatus() {
+        const section = document.getElementById('tc-status-section');
+        const content = document.getElementById('tc-status-content');
+        content.textContent = '加载中...';
+        section.style.display = 'block';
+
+        fetch('/qos/api/tc-status')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const d = data.data;
+                    if (d.error) {
+                        content.textContent = '错误: ' + d.error;
+                    } else if (typeof d === 'object' && !d.qdisc) {
+                        // 多接口
+                        let text = '';
+                        for (const [iface, info] of Object.entries(d)) {
+                            text += '=== ' + iface + ' ===\n';
+                            text += '--- qdisc ---\n' + (info.qdisc || '(无)') + '\n';
+                            text += '--- classes ---\n' + (info.classes || '(无)') + '\n';
+                            text += '--- filters ---\n' + (info.filters || '(无)') + '\n\n';
+                        }
+                        content.textContent = text || '无tc规则';
+                    } else {
+                        content.textContent =
+                            '--- qdisc ---\n' + (d.qdisc || '(无)') + '\n\n' +
+                            '--- classes ---\n' + (d.classes || '(无)') + '\n\n' +
+                            '--- filters ---\n' + (d.filters || '(无)');
+                    }
+                } else {
+                    content.textContent = '获取失败: ' + data.message;
+                }
+            });
+    }
+
+    // ---- 预设策略 ----
+    const presetDescriptions = {
+        office: 'VoIP最高优先级，视频会议次之，普通浏览第三，下载最低',
+        gaming: '游戏流量最高优先级，确保低延迟',
+        balanced: '各类流量均衡分配带宽',
+        strict: '严格限制所有流量，适合带宽有限的场景',
+    };
+
+    document.getElementById('preset-select').addEventListener('change', function() {
+        const desc = presetDescriptions[this.value] || '';
+        document.getElementById('preset-desc').textContent = desc;
+    });
+
+    function applyPreset() {
+        const preset = document.getElementById('preset-select').value;
+        if (!preset) { alert('请选择预设策略'); return; }
+        const iface = document.getElementById('preset-interface').value;
+        if (!confirm('应用预设策略将清除所有现有规则，确定继续吗？')) return;
+
+        fetch('/qos/api/presets/' + encodeURIComponent(preset), {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ interface: iface })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok' && data.data.success) {
+                alert('预设策略已应用: ' + data.data.message);
+                loadRules();
+                loadStats();
+            } else {
+                alert('应用失败: ' + (data.data.message || data.message));
+            }
+        });
+    }
+
+    // ---- 初始化 ----
+    initBandwidthChart();
+    loadInterfaces();
+    loadStats();
+    loadRules();
+
+    // 定时刷新
+    setInterval(loadStats, 5000);
+    setInterval(loadBandwidthChart, 3000);
+</script>
+{% endblock %}

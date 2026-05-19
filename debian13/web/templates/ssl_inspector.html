@@ -1,0 +1,482 @@
+{% extends "base.html" %}
+
+{% block title %}SSL 解密检查{% endblock %}
+
+{% block content %}
+<!-- 统计卡片 -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>解密连接数</h3>
+        <div class="value" id="stat-decrypted">-</div>
+    </div>
+    <div class="stat-card blocked">
+        <h3>阻断数</h3>
+        <div class="value" id="stat-blocked">-</div>
+    </div>
+    <div class="stat-card critical">
+        <h3>证书错误</h3>
+        <div class="value" id="stat-cert-errors">-</div>
+    </div>
+    <div class="stat-card">
+        <h3>TLS版本分布</h3>
+        <div class="value" id="stat-tls-versions">-</div>
+    </div>
+</div>
+
+<!-- SSL解密配置 -->
+<div class="section">
+    <h2>SSL 解密配置</h2>
+    <div class="config-form">
+        <div class="form-group">
+            <label>启用SSL解密</label>
+            <select id="config-enabled">
+                <option value="true">启用</option>
+                <option value="false">禁用</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>目标域名</label>
+            <input type="text" id="config-domains" placeholder="如 *.example.com, *.internal.net">
+        </div>
+        <div class="form-group">
+            <label>TLS最低版本</label>
+            <select id="config-min-tls">
+                <option value="TLSv1.2">TLS 1.2</option>
+                <option value="TLSv1.3">TLS 1.3</option>
+                <option value="TLSv1.1">TLS 1.1</option>
+                <option value="TLSv1.0">TLS 1.0</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>密码套件选择</label>
+            <select id="config-ciphers">
+                <option value="modern">Modern (仅安全套件)</option>
+                <option value="intermediate">Intermediate (兼容模式)</option>
+                <option value="old">Old (最大兼容)</option>
+                <option value="custom">自定义</option>
+            </select>
+        </div>
+        <div class="form-group" style="display: flex; align-items: flex-end;">
+            <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
+        </div>
+    </div>
+</div>
+
+<!-- CA证书管理 -->
+<div class="section">
+    <h2>CA 证书管理</h2>
+    <div class="ca-info">
+        <div class="ca-status" id="ca-status">
+            <p style="color: var(--text-muted);">加载中...</p>
+        </div>
+        <div class="ca-actions">
+            <button class="btn btn-primary" onclick="generateCA()">生成CA证书</button>
+            <button class="btn btn-outline" onclick="downloadCA()">下载CA证书</button>
+        </div>
+    </div>
+</div>
+
+<!-- 启动/停止控制 -->
+<div class="section">
+    <h2>服务控制</h2>
+    <div class="service-control">
+        <span class="service-status" id="service-status">状态: 检测中...</span>
+        <button class="btn btn-primary" id="btn-start" onclick="startService()">启动</button>
+        <button class="btn btn-secondary" id="btn-stop" onclick="stopService()">停止</button>
+    </div>
+</div>
+
+<!-- 解密日志 -->
+<div class="section">
+    <h2>SSL 解密日志</h2>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>时间</th>
+                <th>源IP</th>
+                <th>目标域名</th>
+                <th>TLS版本</th>
+                <th>密码套件</th>
+                <th>SNI</th>
+                <th>动作</th>
+            </tr>
+        </thead>
+        <tbody id="ssl-logs">
+            <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 统计卡片 */
+
+    /* 区块 */
+    .section { margin-bottom: 30px; }
+    .section h2 { color: var(--primary); margin-bottom: 15px; font-size: 18px; }
+
+    /* 配置表单 */
+    .config-form {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 15px;
+    }
+    .form-group label {
+        display: block;
+        color: var(--text-muted);
+        font-size: 13px;
+        margin-bottom: 5px;
+    }
+    .form-group input,
+    .form-group select {
+        width: 100%;
+        padding: 8px 10px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-size: 14px;
+        box-sizing: border-box;
+    }
+    .form-group input:focus,
+    .form-group select:focus {
+        outline: none;
+        border-color: var(--primary);
+    }
+
+    /* CA证书管理 */
+    .ca-info {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 20px;
+        margin-bottom: 15px;
+    }
+    .ca-status { margin-bottom: 15px; }
+    .ca-status p { margin: 4px 0; font-size: 14px; }
+    .ca-actions { display: flex; gap: 10px; }
+
+    /* 服务控制 */
+    .service-control {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+    .service-status {
+        font-size: 14px;
+        color: var(--text-muted);
+    }
+    .service-status.running { color: #86efac; }
+    .service-status.stopped { color: #fca5a5; }
+
+    /* 数据表格 */
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .data-table th, .data-table td {
+        padding: 10px 12px;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+        font-size: 14px;
+    }
+    .data-table th {
+        color: var(--text-muted);
+        font-weight: 600;
+        font-size: 13px;
+    }
+    .data-table tr:hover {
+        background: rgba(37, 99, 235, 0.05);
+    }
+
+    /* 动作标签 */
+    .tag {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .tag-decrypt { background: rgba(147, 197, 253, 0.2); color: #93c5fd; }
+    .tag-block { background: rgba(252, 165, 165, 0.2); color: #fca5a5; }
+    .tag-pass { background: rgba(134, 239, 172, 0.2); color: #86efac; }
+    .tag-error { background: rgba(252, 211, 77, 0.2); color: #fcd34d; }
+
+    /* 按钮 */
+    .btn {
+        padding: 6px 14px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+        transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-secondary { background: #64748b; color: #fff; }
+    .btn-outline {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+    }
+    .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+
+    /* Toast 通知 */
+    .toast-container {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 10000;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .toast {
+        padding: 10px 20px;
+        border-radius: 6px;
+        font-size: 14px;
+        color: #fff;
+        background: var(--primary);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .toast-success { background: #22c55e; }
+    .toast-error { background: #ef4444; }
+    .toast-warning { background: #f59e0b; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// ---- Toast 通知 ----
+    function showToast(message, type) {
+        type = type || 'info';
+        var container = document.getElementById('toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.className = 'toast-container';
+            container.id = 'toast-container';
+            document.body.appendChild(container);
+        }
+        var toast = document.createElement('div');
+        toast.className = 'toast toast-' + type;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(function() {
+            toast.style.opacity = '0';
+            toast.style.transition = 'opacity 0.3s ease';
+            setTimeout(function() { toast.remove(); }, 300);
+        }, 3000);
+    }
+
+    // ---- 加载状态 ----
+    function loadStatus() {
+        fetch('/ssl/api/status')
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+                if (data.status === 'ok') {
+                    var d = data.data;
+                    var statusEl = document.getElementById('service-status');
+                    if (d.running) {
+                        statusEl.textContent = '状态: 运行中';
+                        statusEl.className = 'service-status running';
+                    } else {
+                        statusEl.textContent = '状态: 已停止';
+                        statusEl.className = 'service-status stopped';
+                    }
+                    // 更新CA证书状态
+                    var caEl = document.getElementById('ca-status');
+                    if (d.ca_info) {
+                        caEl.innerHTML =
+                            '<p><strong>CA证书状态:</strong> <span class="tag ' + (d.ca_info.valid ? 'tag-pass' : 'tag-error') + '">' + (d.ca_info.valid ? '有效' : '无效/过期') + '</span></p>' +
+                            '<p><strong>颁发者:</strong> ' + (d.ca_info.subject || '-') + '</p>' +
+                            '<p><strong>有效期:</strong> ' + (d.ca_info.valid_from || '-') + ' ~ ' + (d.ca_info.valid_to || '-') + '</p>' +
+                            '<p><strong>序列号:</strong> ' + (d.ca_info.serial || '-') + '</p>';
+                    } else {
+                        caEl.innerHTML = '<p style="color: var(--text-muted);">尚未生成CA证书，请点击下方按钮生成</p>';
+                    }
+                }
+            })
+            .catch(function(e) { console.error('加载状态失败:', e); });
+    }
+
+    // ---- 加载统计 ----
+    function loadStats() {
+        fetch('/ssl/api/stats')
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+                if (data.status === 'ok') {
+                    var d = data.data;
+                    document.getElementById('stat-decrypted').textContent = d.decrypted_count || 0;
+                    document.getElementById('stat-blocked').textContent = d.blocked_count || 0;
+                    document.getElementById('stat-cert-errors').textContent = d.cert_errors || 0;
+                    // TLS版本分布
+                    var tlsInfo = d.tls_distribution || {};
+                    var tlsParts = [];
+                    for (var ver in tlsInfo) {
+                        tlsParts.push(ver + ': ' + tlsInfo[ver]);
+                    }
+                    document.getElementById('stat-tls-versions').textContent = tlsParts.length > 0 ? tlsParts.join(', ') : '-';
+                    document.getElementById('stat-tls-versions').style.fontSize = '14px';
+                }
+            })
+            .catch(function(e) { console.error('加载统计失败:', e); });
+    }
+
+    // ---- 加载配置 ----
+    function loadConfig() {
+        fetch('/ssl/api/config')
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+                if (data.status === 'ok') {
+                    var c = data.data;
+                    document.getElementById('config-enabled').value = String(c.enabled);
+                    document.getElementById('config-domains').value = c.target_domains || '';
+                    document.getElementById('config-min-tls').value = c.min_tls_version || 'TLSv1.2';
+                    document.getElementById('config-ciphers').value = c.cipher_suite || 'modern';
+                }
+            })
+            .catch(function(e) { console.error('加载配置失败:', e); });
+    }
+
+    // ---- 保存配置 ----
+    function saveConfig() {
+        var config = {
+            enabled: document.getElementById('config-enabled').value === 'true',
+            target_domains: document.getElementById('config-domains').value.trim(),
+            min_tls_version: document.getElementById('config-min-tls').value,
+            cipher_suite: document.getElementById('config-ciphers').value
+        };
+
+        fetch('/ssl/api/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(config)
+        })
+        .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                showToast('配置已保存', 'success');
+            } else {
+                showToast('保存失败: ' + (data.message || '未知错误'), 'error');
+            }
+        })
+        .catch(function(e) { showToast('请求失败: ' + e.message, 'error'); });
+    }
+
+    // ---- 生成CA证书 ----
+    function generateCA() {
+        if (!confirm('确定要生成新的CA证书吗？已有证书将被替换。')) return;
+
+        fetch('/ssl/api/generate-ca', { method: 'POST' })
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+                if (data.status === 'ok') {
+                    showToast('CA证书生成成功', 'success');
+                    loadStatus();
+                } else {
+                    showToast('生成失败: ' + (data.message || '未知错误'), 'error');
+                }
+            })
+            .catch(function(e) { showToast('请求失败: ' + e.message, 'error'); });
+    }
+
+    // ---- 下载CA证书 ----
+    function downloadCA() {
+        window.open('/ssl/api/generate-ca?download=true', '_blank');
+    }
+
+    // ---- 启动服务 ----
+    function startService() {
+        fetch('/ssl/api/start', { method: 'POST' })
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+                if (data.status === 'ok') {
+                    showToast('SSL解密服务已启动', 'success');
+                    loadStatus();
+                } else {
+                    showToast('启动失败: ' + (data.message || '未知错误'), 'error');
+                }
+            })
+            .catch(function(e) { showToast('请求失败: ' + e.message, 'error'); });
+    }
+
+    // ---- 停止服务 ----
+    function stopService() {
+        if (!confirm('确定要停止SSL解密服务吗？')) return;
+
+        fetch('/ssl/api/stop', { method: 'POST' })
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+                if (data.status === 'ok') {
+                    showToast('SSL解密服务已停止', 'success');
+                    loadStatus();
+                } else {
+                    showToast('停止失败: ' + (data.message || '未知错误'), 'error');
+                }
+            })
+            .catch(function(e) { showToast('请求失败: ' + e.message, 'error'); });
+    }
+
+    // ---- 加载日志 ----
+    function loadLogs() {
+        fetch('/ssl/api/logs?limit=50')
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+                var tbody = document.getElementById('ssl-logs');
+                if (data.status === 'ok' && data.data.logs && data.data.logs.length > 0) {
+                    tbody.innerHTML = data.data.logs.map(function(log) {
+                        var actionClass = 'tag-pass';
+                        var actionText = log.action || 'pass';
+                        if (actionText === 'blocked' || actionText === 'block') {
+                            actionClass = 'tag-block';
+                            actionText = '阻断';
+                        } else if (actionText === 'decrypted' || actionText === 'decrypt') {
+                            actionClass = 'tag-decrypt';
+                            actionText = '解密';
+                        } else if (actionText === 'error') {
+                            actionClass = 'tag-error';
+                            actionText = '错误';
+                        } else {
+                            actionText = '放行';
+                        }
+                        var ts = log.timestamp ? new Date(log.timestamp).toLocaleString() : '-';
+                        return '<tr>' +
+                            '<td style="white-space: nowrap;">' + ts + '</td>' +
+                            '<td>' + (log.src_ip || '-') + '</td>' +
+                            '<td>' + (log.dst_domain || '-') + '</td>' +
+                            '<td>' + (log.tls_version || '-') + '</td>' +
+                            '<td style="font-size: 12px;">' + (log.cipher_suite || '-') + '</td>' +
+                            '<td>' + (log.sni || '-') + '</td>' +
+                            '<td><span class="tag ' + actionClass + '">' + actionText + '</span></td>' +
+                            '</tr>';
+                    }).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">暂无解密日志</td></tr>';
+                }
+            })
+            .catch(function(e) { console.error('加载日志失败:', e); });
+    }
+
+    // ---- 初始化 ----
+    loadStatus();
+    loadStats();
+    loadConfig();
+    loadLogs();
+
+    // 定时刷新
+    setInterval(loadStats, 30000);
+    setInterval(loadLogs, 30000);
+</script>
+{% endblock %}

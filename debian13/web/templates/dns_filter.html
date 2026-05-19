@@ -1,0 +1,1132 @@
+{% extends "base.html" %}
+
+{% block title %}DNS过滤{% endblock %}
+
+{% block content %}
+<!-- 统计概览 -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>总规则数</h3>
+        <div class="value" id="total-rules">-</div>
+    </div>
+    <div class="stat-card enabled">
+        <h3>已启用规则</h3>
+        <div class="value" id="enabled-rules">-</div>
+    </div>
+    <div class="stat-card queries">
+        <h3>今日查询</h3>
+        <div class="value" id="today-queries">-</div>
+    </div>
+    <div class="stat-card blocked">
+        <h3>今日拦截</h3>
+        <div class="value" id="today-blocked">-</div>
+    </div>
+    <div class="stat-card rate">
+        <h3>拦截率</h3>
+        <div class="value" id="block-rate">-</div>
+    </div>
+    <div class="stat-card total">
+        <h3>累计查询</h3>
+        <div class="value" id="total-queries">-</div>
+    </div>
+</div>
+
+<div style="margin-bottom: 20px;">
+    <button class="btn btn-primary" onclick="updateRules('dns')">
+        <i class="fas fa-download"></i> 更新黑名单
+    </button>
+</div>
+
+<!-- 规则管理 -->
+<div class="section">
+    <h2>DNS过滤规则管理</h2>
+
+    <!-- 添加规则表单 -->
+    <div class="add-rule-form" id="add-rule-form">
+        <h3>添加自定义规则</h3>
+        <div class="form-row">
+            <div class="form-group">
+                <label>规则名称</label>
+                <input type="text" id="rule-name" placeholder="输入规则名称">
+            </div>
+            <div class="form-group">
+                <label>域名 / 通配符</label>
+                <input type="text" id="rule-domain" placeholder="如 *.example.com 或 example.com">
+            </div>
+            <div class="form-group">
+                <label>规则类型</label>
+                <select id="rule-type">
+                    <option value="blacklist">黑名单 (blacklist)</option>
+                    <option value="whitelist">白名单 (whitelist)</option>
+                    <option value="category">分类规则 (category)</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>分类</label>
+                <select id="rule-category">
+                    <option value="custom">自定义 (custom)</option>
+                    <option value="malware">恶意软件 (malware)</option>
+                    <option value="phishing">钓鱼 (phishing)</option>
+                    <option value="ad">广告 (ad)</option>
+                    <option value="tracking">追踪 (tracking)</option>
+                    <option value="adult">成人内容 (adult)</option>
+                    <option value="gambling">赌博 (gambling)</option>
+                    <option value="social_media">社交媒体 (social_media)</option>
+                    <option value="mining">挖矿 (mining)</option>
+                    <option value="c2">C2通信 (c2)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>动作</label>
+                <select id="rule-action" onchange="toggleRedirectField()">
+                    <option value="block">拦截 (block)</option>
+                    <option value="redirect">重定向 (redirect)</option>
+                    <option value="sinkhole">黑洞 (sinkhole)</option>
+                </select>
+            </div>
+            <div class="form-group" id="redirect-group" style="display: none;">
+                <label>重定向IP</label>
+                <input type="text" id="rule-redirect" placeholder="如 0.0.0.0 或 127.0.0.1">
+            </div>
+            <div class="form-group">
+                <label>描述</label>
+                <input type="text" id="rule-description" placeholder="规则描述（可选）">
+            </div>
+            <div class="form-group" style="display: flex; align-items: flex-end;">
+                <button class="btn btn-primary" onclick="addRule()">添加规则</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 筛选栏 -->
+    <div class="filter-bar">
+        <div class="form-group" style="min-width: 140px;">
+            <select id="filter-type" onchange="loadRules()">
+                <option value="">全部类型</option>
+                <option value="whitelist">白名单</option>
+                <option value="blacklist">黑名单</option>
+                <option value="category">分类规则</option>
+            </select>
+        </div>
+        <div class="form-group" style="min-width: 140px;">
+            <select id="filter-category" onchange="loadRules()">
+                <option value="">全部分类</option>
+                <option value="malware">恶意软件</option>
+                <option value="phishing">钓鱼</option>
+                <option value="ad">广告</option>
+                <option value="tracking">追踪</option>
+                <option value="adult">成人内容</option>
+                <option value="gambling">赌博</option>
+                <option value="social_media">社交媒体</option>
+                <option value="mining">挖矿</option>
+                <option value="c2">C2通信</option>
+                <option value="custom">自定义</option>
+            </select>
+        </div>
+        <div class="filter-actions">
+            <button class="btn btn-outline" onclick="exportRules()">导出规则</button>
+            <button class="btn btn-outline" onclick="showImportDialog()">导入规则</button>
+        </div>
+    </div>
+
+    <!-- 规则列表 -->
+    <table class="rules-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>名称</th>
+                <th>域名</th>
+                <th>类型</th>
+                <th>分类</th>
+                <th>动作</th>
+                <th>命中次数</th>
+                <th>状态</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="rules-tbody">
+            <tr><td colspan="9" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- DNS查询测试 -->
+<div class="section">
+    <h2>DNS查询测试</h2>
+    <div class="test-panel">
+        <div class="form-row">
+            <div class="form-group" style="flex: 2;">
+                <label>域名</label>
+                <input type="text" id="test-domain" placeholder="如 www.example.com" value="">
+            </div>
+            <div class="form-group">
+                <label>查询类型</label>
+                <select id="test-query-type">
+                    <option value="A">A</option>
+                    <option value="AAAA">AAAA</option>
+                    <option value="CNAME">CNAME</option>
+                    <option value="MX">MX</option>
+                    <option value="TXT">TXT</option>
+                    <option value="NS">NS</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>客户端IP</label>
+                <input type="text" id="test-client-ip" placeholder="127.0.0.1" value="192.168.1.100">
+            </div>
+            <div class="form-group" style="display: flex; align-items: flex-end;">
+                <button class="btn btn-primary" onclick="testDNSQuery()">测试查询</button>
+            </div>
+        </div>
+        <div id="test-result" class="test-result"></div>
+    </div>
+</div>
+
+<!-- 拦截统计图表 -->
+<div class="section">
+    <h2>拦截统计</h2>
+    <div class="chart-container">
+        <div class="chart-box">
+            <h3>24小时查询趋势</h3>
+            <canvas id="hourly-chart" width="700" height="250"></canvas>
+        </div>
+        <div class="chart-box">
+            <h3>分类拦截统计</h3>
+            <canvas id="category-chart" width="350" height="250"></canvas>
+        </div>
+    </div>
+    <div class="chart-container" style="margin-top: 20px;">
+        <div class="chart-box">
+            <h3>Top 10 被拦截域名</h3>
+            <div id="top-blocked-list"></div>
+        </div>
+        <div class="chart-box">
+            <h3>Top 10 查询客户端</h3>
+            <div id="top-clients-list"></div>
+        </div>
+    </div>
+</div>
+
+<!-- DNS查询日志 -->
+<div class="section">
+    <h2>DNS查询日志</h2>
+    <div class="filter-bar">
+        <div class="form-group" style="min-width: 180px;">
+            <input type="text" id="log-filter-domain" placeholder="按域名过滤" onkeyup="if(event.key==='Enter')loadLogs()">
+        </div>
+        <div class="form-group" style="min-width: 140px;">
+            <select id="log-filter-action" onchange="loadLogs()">
+                <option value="">全部动作</option>
+                <option value="allowed">放行</option>
+                <option value="blocked">拦截</option>
+                <option value="redirected">重定向</option>
+            </select>
+        </div>
+        <div class="form-group" style="min-width: 140px;">
+            <input type="text" id="log-filter-ip" placeholder="按客户端IP过滤" onkeyup="if(event.key==='Enter')loadLogs()">
+        </div>
+        <div class="filter-actions">
+            <button class="btn btn-outline" onclick="clearLogs()">清理日志</button>
+        </div>
+    </div>
+    <table class="logs-table">
+        <thead>
+            <tr>
+                <th>时间</th>
+                <th>客户端IP</th>
+                <th>域名</th>
+                <th>查询类型</th>
+                <th>动作</th>
+                <th>匹配规则</th>
+                <th>分类</th>
+            </tr>
+        </thead>
+        <tbody id="logs-tbody">
+            <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+    <div class="pagination" id="logs-pagination"></div>
+</div>
+
+<!-- 导入对话框 -->
+<div class="modal-overlay" id="import-modal" style="display: none;">
+    <div class="modal">
+        <h3>批量导入DNS过滤规则</h3>
+        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 12px;">
+            请粘贴JSON格式的规则列表，每条规则包含 name, domain, rule_type, category, action 等字段。
+        </p>
+        <textarea id="import-data" rows="12" placeholder='[
+  {
+    "name": "示例规则",
+    "domain": "*.bad-domain.com",
+    "rule_type": "blacklist",
+    "category": "malware",
+    "action": "block",
+    "description": "示例恶意域名"
+  }
+]'></textarea>
+        <div class="modal-actions">
+            <button class="btn btn-primary" onclick="importRules()">导入</button>
+            <button class="btn btn-outline" onclick="closeImportDialog()">取消</button>
+        </div>
+        <div id="import-result" class="import-result"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 统计卡片 */
+    .stat-card.enabled .value { color: #86efac; }
+    .stat-card.queries .value { color: #93c5fd; }
+    .stat-card.rate .value { color: #fcd34d; }
+    .stat-card.total .value { color: #c4b5fd; }
+
+    /* 区块 */
+    .section { margin-bottom: 30px; }
+    .section h2 { color: var(--primary); margin-bottom: 15px; font-size: 18px; }
+    .section h3 { color: var(--text); margin-bottom: 12px; font-size: 15px; }
+
+    /* 表单 */
+    .form-row {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+    }
+    .form-group {
+        flex: 1;
+        min-width: 180px;
+    }
+    .form-group label {
+        display: block;
+        color: var(--text-muted);
+        font-size: 13px;
+        margin-bottom: 5px;
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        width: 100%;
+        padding: 8px 10px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-size: 14px;
+        box-sizing: border-box;
+    }
+    .form-group textarea {
+        resize: vertical;
+        font-family: monospace;
+        font-size: 13px;
+    }
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+        outline: none;
+        border-color: var(--primary);
+    }
+
+    /* 添加规则表单 */
+    .add-rule-form {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    /* 筛选栏 */
+    .filter-bar {
+        display: flex;
+        gap: 12px;
+        align-items: flex-end;
+        margin-bottom: 15px;
+        flex-wrap: wrap;
+    }
+    .filter-actions {
+        display: flex;
+        gap: 8px;
+        align-items: flex-end;
+    }
+
+    /* 数据表格 */
+    .rules-table, .logs-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .rules-table th, .rules-table td,
+    .logs-table th, .logs-table td {
+        padding: 10px 12px;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+        font-size: 14px;
+    }
+    .rules-table th, .logs-table th {
+        color: var(--text-muted);
+        font-weight: 600;
+        font-size: 13px;
+    }
+    .rules-table tr:hover, .logs-table tr:hover {
+        background: rgba(37, 99, 235, 0.05);
+    }
+
+    /* 标签样式 */
+    .tag {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .tag-block { background: rgba(252, 165, 165, 0.2); color: #fca5a5; }
+    .tag-redirect { background: rgba(252, 211, 77, 0.2); color: #fcd34d; }
+    .tag-sinkhole { background: rgba(192, 132, 252, 0.2); color: #c084fc; }
+    .tag-allowed { background: rgba(134, 239, 172, 0.2); color: #86efac; }
+    .tag-blocked { background: rgba(252, 165, 165, 0.2); color: #fca5a5; }
+    .tag-whitelist { background: rgba(134, 239, 172, 0.2); color: #86efac; }
+    .tag-blacklist { background: rgba(252, 165, 165, 0.2); color: #fca5a5; }
+    .tag-category { background: rgba(147, 197, 253, 0.2); color: #93c5fd; }
+    .tag-enabled { background: rgba(134, 239, 172, 0.2); color: #86efac; }
+    .tag-disabled { background: rgba(148, 163, 184, 0.2); color: #94a3b8; }
+    .tag-malware { background: rgba(252, 165, 165, 0.2); color: #fca5a5; }
+    .tag-phishing { background: rgba(251, 146, 60, 0.2); color: #fb923c; }
+    .tag-ad, .tag-tracking { background: rgba(252, 211, 77, 0.2); color: #fcd34d; }
+    .tag-adult, .tag-gambling { background: rgba(244, 114, 182, 0.2); color: #f472b6; }
+    .tag-mining { background: rgba(192, 132, 252, 0.2); color: #c084fc; }
+    .tag-c2 { background: rgba(248, 113, 113, 0.2); color: #f87171; }
+    .tag-social_media { background: rgba(96, 165, 250, 0.2); color: #60a5fa; }
+    .tag-custom { background: rgba(148, 163, 184, 0.2); color: #94a3b8; }
+
+    /* 按钮 */
+    .btn {
+        padding: 6px 14px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+        transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-danger { background: #ef4444; color: #fff; }
+    .btn-success { background: #22c55e; color: #fff; }
+    .btn-sm { padding: 3px 10px; font-size: 12px; }
+    .btn-outline {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+    }
+    .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+
+    /* 操作按钮组 */
+    .action-btns { display: flex; gap: 6px; }
+
+    /* 测试面板 */
+    .test-panel {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 20px;
+    }
+    .test-result {
+        margin-top: 12px;
+        padding: 12px;
+        border-radius: 4px;
+        font-size: 14px;
+        display: none;
+    }
+    .test-result.pass {
+        display: block;
+        background: rgba(134, 239, 172, 0.1);
+        border: 1px solid rgba(134, 239, 172, 0.3);
+        color: #86efac;
+    }
+    .test-result.fail {
+        display: block;
+        background: rgba(252, 165, 165, 0.1);
+        border: 1px solid rgba(252, 165, 165, 0.3);
+        color: #fca5a5;
+    }
+
+    /* 图表区域 */
+    .chart-container {
+        display: flex;
+        gap: 20px;
+    }
+    .chart-box {
+        flex: 1;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 16px;
+    }
+    .chart-box h3 {
+        color: var(--text-muted);
+        font-size: 14px;
+        margin-bottom: 12px;
+    }
+    .chart-box canvas {
+        width: 100% !important;
+        height: auto !important;
+    }
+
+    /* Top列表 */
+    .top-list-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 6px 0;
+        border-bottom: 1px solid var(--border);
+        font-size: 13px;
+    }
+    .top-list-item:last-child { border-bottom: none; }
+    .top-list-item .domain { color: var(--text); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .top-list-item .count { color: var(--primary); font-weight: 600; }
+
+    /* 分页 */
+    .pagination {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 15px;
+    }
+    .pagination button {
+        padding: 5px 12px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        cursor: pointer;
+        font-size: 13px;
+    }
+    .pagination button:hover { border-color: var(--primary); }
+    .pagination button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* 域名列 */
+    .domain-cell {
+        max-width: 220px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-family: monospace;
+        font-size: 13px;
+    }
+
+    /* 模态框 */
+    .modal-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+    .modal {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 24px;
+        width: 600px;
+        max-width: 90vw;
+    }
+    .modal h3 { color: var(--primary); margin-bottom: 12px; }
+    .modal-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 12px;
+    }
+    .import-result {
+        margin-top: 10px;
+        font-size: 13px;
+        display: none;
+    }
+    .import-result.success { display: block; color: #86efac; }
+    .import-result.error { display: block; color: #fca5a5; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// ---- 工具函数 ----
+    function getCategoryTagClass(category) {
+        const map = {
+            'malware': 'tag-malware', 'phishing': 'tag-phishing',
+            'ad': 'tag-ad', 'tracking': 'tag-tracking',
+            'adult': 'tag-adult', 'gambling': 'tag-gambling',
+            'mining': 'tag-mining', 'c2': 'tag-c2',
+            'social_media': 'tag-social_media', 'custom': 'tag-custom',
+            'whitelist': 'tag-whitelist',
+        };
+        return map[category] || 'tag-custom';
+    }
+
+    function getActionTagClass(action) {
+        const map = {
+            'block': 'tag-block', 'redirect': 'tag-redirect', 'sinkhole': 'tag-sinkhole',
+            'allowed': 'tag-allowed', 'blocked': 'tag-blocked', 'redirected': 'tag-redirect',
+        };
+        return map[action] || '';
+    }
+
+    function getTypeTagClass(type) {
+        const map = {
+            'whitelist': 'tag-whitelist', 'blacklist': 'tag-blacklist', 'category': 'tag-category',
+        };
+        return map[type] || '';
+    }
+
+    // ---- 加载统计数据 ----
+    function loadStats() {
+        fetch('/dns-filter/api/stats')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const d = data.data;
+                    document.getElementById('total-rules').textContent = d.total_rules;
+                    document.getElementById('enabled-rules').textContent = d.enabled_rules;
+                    document.getElementById('today-queries').textContent = d.today_queries;
+                    document.getElementById('today-blocked').textContent = d.today_blocked;
+                    document.getElementById('block-rate').textContent = d.block_rate + '%';
+                    document.getElementById('total-queries').textContent = d.total_queries;
+
+                    // 绘制图表
+                    drawHourlyChart(d.hourly_trend || []);
+                    drawCategoryChart(d.category_stats || {});
+                    renderTopBlocked(d.top_blocked_domains || []);
+                    renderTopClients(d.top_clients || []);
+                }
+            })
+            .catch(() => {});
+    }
+
+    // ---- 加载规则列表 ----
+    function loadRules() {
+        const filterType = document.getElementById('filter-type').value;
+        const filterCategory = document.getElementById('filter-category').value;
+
+        let url = '/dns-filter/api/rules?';
+        if (filterType) url += 'rule_type=' + encodeURIComponent(filterType) + '&';
+        if (filterCategory) url += 'category=' + encodeURIComponent(filterCategory);
+
+        fetch(url)
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                const tbody = document.getElementById('rules-tbody');
+                if (data.status === 'ok' && data.data.rules.length > 0) {
+                    tbody.innerHTML = data.data.rules.map(rule => {
+                        const actionClass = getActionTagClass(rule.action);
+                        const typeClass = getTypeTagClass(rule.rule_type);
+                        const categoryClass = getCategoryTagClass(rule.category);
+                        const statusClass = rule.enabled ? 'tag-enabled' : 'tag-disabled';
+                        const statusText = rule.enabled ? '启用' : '禁用';
+                        const typeNames = {whitelist:'白名单', blacklist:'黑名单', category:'分类'};
+                        const categoryNames = {
+                            malware:'恶意软件', phishing:'钓鱼', ad:'广告', tracking:'追踪',
+                            adult:'成人', gambling:'赌博', social_media:'社交媒体',
+                            mining:'挖矿', c2:'C2通信', custom:'自定义'
+                        };
+                        return `<tr>
+                            <td>${rule.id}</td>
+                            <td title="${rule.description || ''}">${rule.name}</td>
+                            <td class="domain-cell" title="${rule.domain}">${rule.domain}</td>
+                            <td><span class="tag ${typeClass}">${typeNames[rule.rule_type] || rule.rule_type}</span></td>
+                            <td><span class="tag ${categoryClass}">${categoryNames[rule.category] || rule.category}</span></td>
+                            <td><span class="tag ${actionClass}">${rule.action}</span></td>
+                            <td>${rule.hit_count}</td>
+                            <td><span class="tag ${statusClass}">${statusText}</span></td>
+                            <td>
+                                <div class="action-btns">
+                                    <button class="btn btn-sm btn-outline" onclick="toggleRule(${rule.id}, ${!rule.enabled})">
+                                        ${rule.enabled ? '禁用' : '启用'}
+                                    </button>
+                                    <button class="btn btn-sm btn-danger" onclick="deleteRule(${rule.id})">删除</button>
+                                </div>
+                            </td>
+                        </tr>`;
+                    }).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted);">暂无规则</td></tr>';
+                }
+            })
+            .catch(() => {});
+    }
+
+    // ---- 添加规则 ----
+    function addRule() {
+        const name = document.getElementById('rule-name').value.trim();
+        const domain = document.getElementById('rule-domain').value.trim();
+        const rule_type = document.getElementById('rule-type').value;
+        const category = document.getElementById('rule-category').value;
+        const action = document.getElementById('rule-action').value;
+        const redirect_to = document.getElementById('rule-redirect').value.trim();
+        const description = document.getElementById('rule-description').value.trim();
+
+        if (!name) { alert('请输入规则名称'); return; }
+        if (!domain) { alert('请输入域名'); return; }
+
+        fetch('/dns-filter/api/rules', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name, domain, rule_type, category, action, redirect_to, description })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                alert('规则添加成功');
+                document.getElementById('rule-name').value = '';
+                document.getElementById('rule-domain').value = '';
+                document.getElementById('rule-description').value = '';
+                document.getElementById('rule-redirect').value = '';
+                loadRules();
+                loadStats();
+            } else {
+                alert('添加失败: ' + data.message);
+            }
+        })
+        .catch(e => alert('请求失败: ' + e));
+    }
+
+    // ---- 切换规则状态 ----
+    function toggleRule(ruleId, enabled) {
+        fetch(`/dns-filter/api/rules/${ruleId}/toggle`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ enabled })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                loadRules();
+                loadStats();
+            } else {
+                alert('操作失败: ' + data.message);
+            }
+        })
+        .catch(e => alert('请求失败: ' + e));
+    }
+
+    // ---- 删除规则 ----
+    function deleteRule(ruleId) {
+        if (!confirm('确定要删除此规则吗？')) return;
+
+        fetch(`/dns-filter/api/rules/${ruleId}`, {
+            method: 'DELETE',
+            headers: {'Content-Type': 'application/json'}
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                loadRules();
+                loadStats();
+            } else {
+                alert('删除失败: ' + data.message);
+            }
+        })
+        .catch(e => alert('请求失败: ' + e));
+    }
+
+    // ---- 重定向字段切换 ----
+    function toggleRedirectField() {
+        const action = document.getElementById('rule-action').value;
+        document.getElementById('redirect-group').style.display = action === 'redirect' ? 'block' : 'none';
+    }
+
+    // ---- 测试DNS查询 ----
+    function testDNSQuery() {
+        const domain = document.getElementById('test-domain').value.trim();
+        const query_type = document.getElementById('test-query-type').value;
+        const client_ip = document.getElementById('test-client-ip').value.trim();
+        const resultEl = document.getElementById('test-result');
+
+        if (!domain) { alert('请输入域名'); return; }
+
+        resultEl.style.display = 'none';
+        resultEl.className = 'test-result';
+
+        fetch('/dns-filter/api/test', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ domain, query_type, client_ip })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                const d = data.data;
+                if (d.action === 'allowed') {
+                    resultEl.innerHTML = '<strong>放行</strong> - 域名 ' + d.domain + ' 未匹配任何过滤规则';
+                    resultEl.className = 'test-result pass';
+                } else {
+                    let info = '<strong>' + (d.action === 'blocked' ? '拦截' : '重定向') + '</strong> - 域名 ' + d.domain;
+                    if (d.matched_rule) info += '<br>匹配规则: ' + d.matched_rule;
+                    if (d.category) info += '<br>分类: ' + d.category;
+                    if (d.redirect_to) info += '<br>重定向至: ' + d.redirect_to;
+                    resultEl.innerHTML = info;
+                    resultEl.className = 'test-result fail';
+                }
+            } else {
+                resultEl.innerHTML = '测试失败: ' + data.message;
+                resultEl.className = 'test-result fail';
+            }
+        })
+        .catch(e => {
+            resultEl.innerHTML = '请求失败: ' + e;
+            resultEl.className = 'test-result fail';
+        });
+    }
+
+    // ---- 绘制24小时趋势图 ----
+    function drawHourlyChart(trend) {
+        const canvas = document.getElementById('hourly-chart');
+        if (!canvas || !trend.length) return;
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width, h = canvas.height;
+        const padding = { top: 20, right: 20, bottom: 40, left: 50 };
+        const chartW = w - padding.left - padding.right;
+        const chartH = h - padding.top - padding.bottom;
+
+        ctx.clearRect(0, 0, w, h);
+
+        const maxVal = Math.max(...trend.map(t => t.queries), 1);
+        const stepX = chartW / (trend.length - 1 || 1);
+
+        // 网格线
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.2)';
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= 4; i++) {
+            const y = padding.top + (chartH / 4) * i;
+            ctx.beginPath();
+            ctx.moveTo(padding.left, y);
+            ctx.lineTo(w - padding.right, y);
+            ctx.stroke();
+            // Y轴标签
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '11px monospace';
+            ctx.textAlign = 'right';
+            ctx.fillText(Math.round(maxVal - (maxVal / 4) * i), padding.left - 8, y + 4);
+        }
+
+        // 面积填充
+        ctx.beginPath();
+        ctx.moveTo(padding.left, padding.top + chartH);
+        trend.forEach((t, i) => {
+            const x = padding.left + i * stepX;
+            const y = padding.top + chartH - (t.queries / maxVal) * chartH;
+            ctx.lineTo(x, y);
+        });
+        ctx.lineTo(padding.left + (trend.length - 1) * stepX, padding.top + chartH);
+        ctx.closePath();
+        const grad = ctx.createLinearGradient(0, padding.top, 0, padding.top + chartH);
+        grad.addColorStop(0, 'rgba(37, 99, 235, 0.3)');
+        grad.addColorStop(1, 'rgba(37, 99, 235, 0.02)');
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // 折线
+        ctx.beginPath();
+        trend.forEach((t, i) => {
+            const x = padding.left + i * stepX;
+            const y = padding.top + chartH - (t.queries / maxVal) * chartH;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        });
+        ctx.strokeStyle = '#2563eb';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // 数据点 + X轴标签
+        trend.forEach((t, i) => {
+            const x = padding.left + i * stepX;
+            const y = padding.top + chartH - (t.queries / maxVal) * chartH;
+
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, Math.PI * 2);
+            ctx.fillStyle = '#2563eb';
+            ctx.fill();
+
+            // X轴标签（每隔几个显示）
+            if (i % 4 === 0 || i === trend.length - 1) {
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '10px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(t.hour, x, h - padding.bottom + 18);
+            }
+        });
+    }
+
+    // ---- 绘制分类统计图 ----
+    function drawCategoryChart(categoryStats) {
+        const container = document.getElementById('category-chart');
+        if (!container) return;
+        const canvas = container;
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width, h = canvas.height;
+
+        ctx.clearRect(0, 0, w, h);
+
+        const entries = Object.entries(categoryStats).sort((a, b) => b[1] - a[1]);
+        if (!entries.length) {
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '14px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('暂无数据', w / 2, h / 2);
+            return;
+        }
+
+        const total = entries.reduce((s, e) => s + e[1], 0);
+        const colors = ['#fca5a5', '#fb923c', '#fcd34d', '#86efac', '#93c5fd', '#c084fc', '#f472b6', '#60a5fa', '#f87171', '#94a3b8'];
+        const cx = w * 0.35, cy = h * 0.5, r = Math.min(cx, cy) - 20;
+        let startAngle = -Math.PI / 2;
+
+        entries.forEach(([cat, count], i) => {
+            const slice = (count / total) * Math.PI * 2;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.arc(cx, cy, r, startAngle, startAngle + slice);
+            ctx.closePath();
+            ctx.fillStyle = colors[i % colors.length];
+            ctx.fill();
+            startAngle += slice;
+        });
+
+        // 图例
+        const legendX = w * 0.65;
+        let legendY = 30;
+        entries.forEach(([cat, count], i) => {
+            ctx.fillStyle = colors[i % colors.length];
+            ctx.fillRect(legendX, legendY, 12, 12);
+            ctx.fillStyle = '#e2e8f0';
+            ctx.font = '12px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(cat + ' (' + count + ')', legendX + 18, legendY + 10);
+            legendY += 20;
+        });
+    }
+
+    // ---- 渲染Top拦截域名 ----
+    function renderTopBlocked(list) {
+        const container = document.getElementById('top-blocked-list');
+        if (!list.length) {
+            container.innerHTML = '<div style="color: var(--text-muted); text-align: center; padding: 20px;">暂无数据</div>';
+            return;
+        }
+        container.innerHTML = list.map((item, i) =>
+            `<div class="top-list-item">
+                <span class="domain">${i + 1}. ${item.domain}</span>
+                <span class="count">${item.count}</span>
+            </div>`
+        ).join('');
+    }
+
+    // ---- 渲染Top查询客户端 ----
+    function renderTopClients(list) {
+        const container = document.getElementById('top-clients-list');
+        if (!list.length) {
+            container.innerHTML = '<div style="color: var(--text-muted); text-align: center; padding: 20px;">暂无数据</div>';
+            return;
+        }
+        container.innerHTML = list.map((item, i) =>
+            `<div class="top-list-item">
+                <span class="domain">${i + 1}. ${item.client_ip}</span>
+                <span class="count">${item.count}</span>
+            </div>`
+        ).join('');
+    }
+
+    // ---- 加载DNS查询日志 ----
+    let logsOffset = 0;
+    const logsLimit = 50;
+    function loadLogs(offset) {
+        if (offset !== undefined) logsOffset = offset;
+
+        const domain = document.getElementById('log-filter-domain').value.trim();
+        const action = document.getElementById('log-filter-action').value;
+        const client_ip = document.getElementById('log-filter-ip').value.trim();
+
+        let url = `/dns-filter/api/logs?limit=${logsLimit}&offset=${logsOffset}`;
+        if (domain) url += '&domain=' + encodeURIComponent(domain);
+        if (action) url += '&action=' + encodeURIComponent(action);
+        if (client_ip) url += '&client_ip=' + encodeURIComponent(client_ip);
+
+        fetch(url)
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                const tbody = document.getElementById('logs-tbody');
+                if (data.status === 'ok' && data.data.logs.length > 0) {
+                    tbody.innerHTML = data.data.logs.map(log => {
+                        const actionClass = getActionTagClass(log.action);
+                        const ts = log.timestamp ? new Date(log.timestamp).toLocaleString() : '-';
+                        const actionNames = {allowed:'放行', blocked:'拦截', redirected:'重定向'};
+                        return `<tr>
+                            <td style="white-space: nowrap;">${ts}</td>
+                            <td>${log.client_ip}</td>
+                            <td class="domain-cell" title="${log.domain}">${log.domain}</td>
+                            <td>${log.query_type}</td>
+                            <td><span class="tag ${actionClass}">${actionNames[log.action] || log.action}</span></td>
+                            <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${log.matched_rule || ''}">${log.matched_rule || '-'}</td>
+                            <td>${log.category || '-'}</td>
+                        </tr>`;
+                    }).join('');
+
+                    renderPagination(data.data.total, logsOffset, logsLimit);
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">暂无查询日志</td></tr>';
+                    document.getElementById('logs-pagination').innerHTML = '';
+                }
+            })
+            .catch(() => {});
+    }
+
+    function renderPagination(total, offset, limit) {
+        const totalPages = Math.ceil(total / limit);
+        const currentPage = Math.floor(offset / limit) + 1;
+        const container = document.getElementById('logs-pagination');
+        if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+        let html = '';
+        html += `<button ${currentPage <= 1 ? 'disabled' : ''} onclick="loadLogs(${offset - limit})">上一页</button>`;
+
+        const maxVisible = 5;
+        let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+        let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+        if (endPage - startPage < maxVisible - 1) {
+            startPage = Math.max(1, endPage - maxVisible + 1);
+        }
+
+        for (let i = startPage; i <= endPage; i++) {
+            html += `<button class="${i === currentPage ? 'active' : ''}" onclick="loadLogs(${(i - 1) * limit})">${i}</button>`;
+        }
+
+        html += `<button ${currentPage >= totalPages ? 'disabled' : ''} onclick="loadLogs(${offset + limit})">下一页</button>`;
+        container.innerHTML = html;
+    }
+
+    // ---- 导出规则 ----
+    function exportRules() {
+        const filterType = document.getElementById('filter-type').value;
+        const filterCategory = document.getElementById('filter-category').value;
+
+        let url = '/dns-filter/api/export/download?';
+        if (filterType) url += 'rule_type=' + encodeURIComponent(filterType) + '&';
+        if (filterCategory) url += 'category=' + encodeURIComponent(filterCategory);
+
+        window.open(url, '_blank');
+    }
+
+    // ---- 导入对话框 ----
+    function showImportDialog() {
+        document.getElementById('import-modal').style.display = 'flex';
+        document.getElementById('import-result').style.display = 'none';
+    }
+
+    function closeImportDialog() {
+        document.getElementById('import-modal').style.display = 'none';
+    }
+
+    function importRules() {
+        const dataStr = document.getElementById('import-data').value.trim();
+        const resultEl = document.getElementById('import-result');
+
+        if (!dataStr) { alert('请输入规则数据'); return; }
+
+        let rules;
+        try {
+            rules = JSON.parse(dataStr);
+        } catch (e) {
+            alert('JSON格式错误: ' + e.message);
+            return;
+        }
+
+        fetch('/dns-filter/api/import', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ rules })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                const d = data.data;
+                let msg = '导入完成: 成功 ' + d.success + ' 条, 失败 ' + d.failed + ' 条';
+                if (d.errors.length > 0) {
+                    msg += '<br>错误详情:<br>' + d.errors.join('<br>');
+                    resultEl.className = 'import-result error';
+                } else {
+                    resultEl.className = 'import-result success';
+                }
+                resultEl.innerHTML = msg;
+                resultEl.style.display = 'block';
+                loadRules();
+                loadStats();
+            } else {
+                resultEl.innerHTML = '导入失败: ' + data.message;
+                resultEl.className = 'import-result error';
+                resultEl.style.display = 'block';
+            }
+        })
+        .catch(e => {
+            resultEl.innerHTML = '请求失败: ' + e;
+            resultEl.className = 'import-result error';
+            resultEl.style.display = 'block';
+        });
+    }
+
+    // ---- 清理日志 ----
+    function clearLogs() {
+        const days = prompt('请输入要保留的日志天数（默认30天）:', '30');
+        if (days === null) return;
+
+        fetch('/dns-filter/api/clear-logs', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ days: parseInt(days) })
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                alert(data.message);
+                loadLogs(0);
+                loadStats();
+            } else {
+                alert('清理失败: ' + data.message);
+            }
+        })
+        .catch(e => alert('请求失败: ' + e));
+    }
+
+    // ---- 初始化 ----
+    loadStats();
+    loadRules();
+    loadLogs(0);
+
+    function updateRules(module) {
+        if (!confirm('确定要从远程源更新' + (module === 'ids' ? 'IDS签名库' : module === 'waf' ? 'WAF规则库' : 'DNS黑名单') + '？')) return;
+        showToast('正在更新...', 'info');
+        fetch('/rule-update/api/update/' + module, { method: 'POST', headers: {'Content-Type': 'application/json'} })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'ok') showToast('更新成功', 'success');
+                else showToast(data.message || '更新失败', 'error');
+            })
+            .catch(e => showToast('更新失败: ' + e.message, 'error'));
+    }
+
+    // 定时刷新
+    setInterval(loadStats, 30000);
+    setInterval(loadLogs, 60000);
+</script>
+{% endblock %}

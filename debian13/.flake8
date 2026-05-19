@@ -1,0 +1,27 @@
+[flake8]
+max-line-length = 120
+exclude =
+    .git,
+    __pycache__,
+    build,
+    dist,
+    iso_build,
+    node_modules,
+    .eggs,
+    *.egg-info,
+    .tox,
+    .venv,
+    venv,
+    data,
+    logs,
+    backups,
+    reports
+# 忽略以下错误:
+# E501: 行过长 (已通过 max-line-length 控制)
+# W503: 二元运算符前换行
+# E402: 模块级别导入不在文件顶部
+ignore = W503,E402
+# 每个文件最大复杂度
+max-complexity = 10
+# 统计信息
+statistics = True

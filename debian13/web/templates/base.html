@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{% block title %}GateKeeper{% endblock %} - AI安全网络防御系统</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/favicon.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- 侧边栏切换按钮 (移动端显示) -->
+    <button class="sidebar-toggle" id="sidebarToggle" aria-label="切换菜单">
+        <div class="hamburger-icon">
+            <span></span>
+            <span></span>
+            <span></span>
+        </div>
+    </button>
+
+    <!-- 侧边栏遮罩 -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- Toast通知容器 -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <nav class="sidebar" id="sidebar">
+        <div class="logo">
+            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="GateKeeper" class="sidebar-logo-img">
+            <h1>GateKeeper</h1>
+            <p class="version">v{{ version }}</p>
+        </div>
+        <ul class="nav-menu">
+            <!-- 系统概览 -->
+            <div class="nav-group" data-group="overview">
+                <div class="nav-group-header" onclick="toggleNavGroup('overview')">
+                    <span class="group-label">系统概览</span>
+                    <span class="group-chevron">&#9660;</span>
+                </div>
+                <div class="nav-group-items" id="nav-group-overview">
+                    <li data-module="none"><a href="/" class="{% if request.endpoint == 'dashboard.index' %}active{% endif %}">仪表盘</a></li>
+                </div>
+            </div>
+
+            <!-- 安全防护 -->
+            <div class="nav-group" data-group="security">
+                <div class="nav-group-header" onclick="toggleNavGroup('security')">
+                    <span class="group-label">安全防护</span>
+                    <span class="group-chevron">&#9660;</span>
+                </div>
+                <div class="nav-group-items" id="nav-group-security">
+                    <li data-module="ids"><a href="/ids/" class="{% if request.endpoint == 'ids.index' %}active{% endif %}">IDS入侵检测</a></li>
+                    <li data-module="waf"><a href="/waf/" class="{% if request.endpoint == 'waf.index' %}active{% endif %}">WAF防火墙</a></li>
+                    <li data-module="dns_filter"><a href="/dns-filter/" class="{% if request.endpoint == 'dns_filter.index' %}active{% endif %}">DNS过滤</a></li>
+                    <li data-module="gateway_av"><a href="/gateway_av/" class="{% if request.endpoint == 'gateway_av.index' %}active{% endif %}">网关防病毒</a></li>
+                    <li data-module="ddos"><a href="/ddos/" class="{% if request.endpoint == 'ddos.index' %}active{% endif %}">DDoS防护</a></li>
+                    <li data-module="ssl_inspector"><a href="/ssl/" class="{% if request.endpoint == 'ssl_inspector.index' %}active{% endif %}">SSL检查</a></li>
+                    <li data-module="content_security"><a href="/content-security/" class="{% if request.endpoint == 'content_security.index' %}active{% endif %}">内容安全</a></li>
+                    <li data-module="app_control"><a href="/app-control/" class="{% if request.endpoint == 'app_control.index' %}active{% endif %}">应用管控</a></li>
+                </div>
+            </div>
+
+            <!-- 网络管理 -->
+            <div class="nav-group" data-group="network">
+                <div class="nav-group-header" onclick="toggleNavGroup('network')">
+                    <span class="group-label">网络管理</span>
+                    <span class="group-chevron">&#9660;</span>
+                </div>
+                <div class="nav-group-items" id="nav-group-network">
+                    <li data-module="none"><a href="/network/" class="{% if request.endpoint == 'network.index' %}active{% endif %}">网络接口</a></li>
+                    <li data-module="dual_wan"><a href="/dual-wan/" class="{% if request.endpoint == 'dual_wan.index' %}active{% endif %}">双出口接入</a></li>
+                    <li data-module="routing"><a href="/routing/" class="{% if request.endpoint == 'routing.index' %}active{% endif %}">动态路由</a></li>
+                    <li data-module="qos"><a href="/qos/" class="{% if request.endpoint == 'qos.index' %}active{% endif %}">QoS流量整形</a></li>
+                    <li data-module="isolation"><a href="/isolation/" class="{% if request.endpoint == 'isolation.index' %}active{% endif %}">网络隔离</a></li>
+                    <li data-module="gateway"><a href="/gateway/" class="{% if request.endpoint == 'gateway.index' %}active{% endif %}">DHCP/DNS网关</a></li>
+                </div>
+            </div>
+
+            <!-- 安全服务 -->
+            <div class="nav-group" data-group="services">
+                <div class="nav-group-header" onclick="toggleNavGroup('services')">
+                    <span class="group-label">安全服务</span>
+                    <span class="group-chevron">&#9660;</span>
+                </div>
+                <div class="nav-group-items" id="nav-group-services">
+                    <li data-module="vpn"><a href="/vpn/" class="{% if request.endpoint == 'vpn.index' %}active{% endif %}">VPN服务</a></li>
+                    <li data-module="honeypot"><a href="/honeypot/" class="{% if request.endpoint == 'honeypot.index' %}active{% endif %}">蜜罐系统</a></li>
+                    <li data-module="sandbox"><a href="/sandbox/" class="{% if request.endpoint == 'sandbox.index' %}active{% endif %}">沙箱分析</a></li>
+                    <li data-module="zero_trust"><a href="/zta/" class="{% if request.endpoint == 'zero_trust.index' %}active{% endif %}">零信任架构</a></li>
+                </div>
+            </div>
+
+            <!-- 智能分析 -->
+            <div class="nav-group" data-group="analytics">
+                <div class="nav-group-header" onclick="toggleNavGroup('analytics')">
+                    <span class="group-label">智能分析</span>
+                    <span class="group-chevron">&#9660;</span>
+                </div>
+                <div class="nav-group-items" id="nav-group-analytics">
+                    <li data-module="siem"><a href="/siem/" class="{% if request.endpoint == 'siem.index' %}active{% endif %}">SIEM中心</a></li>
+                    <li data-module="vuln_scan"><a href="/vuln-scan/" class="{% if request.endpoint == 'vuln_scan.index' %}active{% endif %}">漏洞扫描</a></li>
+                    <li data-module="compliance"><a href="/compliance/" class="{% if request.endpoint == 'compliance.index' %}active{% endif %}">合规检查</a></li>
+                    <li data-module="ntconfig"><a href="/ntconfig/" class="{% if request.endpoint == 'ntconfig.index' %}active{% endif %}">基线检查</a></li>
+                    <li data-module="none"><a href="/assets/" class="{% if request.endpoint == 'assets.index' %}active{% endif %}">资产管理</a></li>
+                    <li data-module="rule_update"><a href="/rule-update/" class="{% if request.endpoint == 'rule_update.index' %}active{% endif %}">规则更新</a></li>
+                    <li data-module="none"><a href="#" onclick="showToast('威胁情报模块开发中', 'info'); return false;">威胁情报</a></li>
+                </div>
+            </div>
+
+            <!-- 系统管理 -->
+            <div class="nav-group" data-group="admin">
+                <div class="nav-group-header" onclick="toggleNavGroup('admin')">
+                    <span class="group-label">系统管理</span>
+                    <span class="group-chevron">&#9660;</span>
+                </div>
+                <div class="nav-group-items" id="nav-group-admin">
+                    <li data-module="none"><a href="/alerts/" class="{% if request.endpoint == 'alerts.index' %}active{% endif %}" id="nav-alerts">告警管理<span class="alert-badge" id="alertBadge" style="display:none;">0</span></a></li>
+                    <li data-module="none"><a href="/reports/" class="{% if request.endpoint == 'reports.index' %}active{% endif %}">报表中心</a></li>
+                    <li data-module="none"><a href="/audit/" class="{% if request.endpoint == 'audit.index' %}active{% endif %}">审计日志</a></li>
+                    <li data-module="ha"><a href="/ha/" class="{% if request.endpoint == 'ha.index' %}active{% endif %}">高可用</a></li>
+                    <li data-module="auth_ldap"><a href="/ldap/" class="{% if request.endpoint == 'auth_ldap.index' %}active{% endif %}">LDAP集成</a></li>
+                    <li data-module="none"><a href="/system/backup/" class="{% if request.endpoint == 'backup.index' %}active{% endif %}">系统备份</a></li>
+                    <li data-module="none"><a href="/settings/" class="{% if request.endpoint == 'settings.index' %}active{% endif %}">系统设置</a></li>
+                </div>
+            </div>
+        </ul>
+        <div class="user-info">
+            <div class="user-dropdown" id="userDropdown">
+                <button class="user-dropdown-trigger" onclick="toggleUserDropdown()">
+                    <span class="user-avatar" id="userAvatar">{{ current_user.username[0].upper() if current_user.is_authenticated else '?' }}</span>
+                    <span id="current-user">{{ current_user.username if current_user.is_authenticated else '未登录' }}</span>
+                    <i class="fas fa-chevron-down" style="font-size:10px;color:var(--text-muted);margin-left:4px;"></i>
+                </button>
+                <div class="user-dropdown-menu" id="userDropdownMenu">
+                    <div class="user-dropdown-header">
+                        <span class="user-avatar" style="width:32px;height:32px;font-size:14px;">{{ current_user.username[0].upper() if current_user.is_authenticated else '?' }}</span>
+                        <div>
+                            <div style="font-weight:600;font-size:14px;">{{ current_user.username if current_user.is_authenticated else '未登录' }}</div>
+                            <div style="font-size:11px;color:var(--text-muted);">{{ '管理员' if current_user.is_authenticated else '' }}</div>
+                        </div>
+                    </div>
+                    <div class="user-dropdown-divider"></div>
+                    <a href="/settings/" class="user-dropdown-item" onclick="closeUserDropdown()">
+                        <i class="fas fa-user-cog" style="width:16px;"></i> 个人设置
+                    </a>
+                    <a href="/settings/" class="user-dropdown-item" onclick="closeUserDropdown()">
+                        <i class="fas fa-shield-alt" style="width:16px;"></i> 安全设置
+                    </a>
+                    <a href="/audit/" class="user-dropdown-item" onclick="closeUserDropdown()">
+                        <i class="fas fa-history" style="width:16px;"></i> 操作日志
+                    </a>
+                    {% if current_user.is_authenticated %}
+                    <div class="user-dropdown-divider"></div>
+                    <button class="user-dropdown-item user-dropdown-logout" onclick="logout(); closeUserDropdown();">
+                        <i class="fas fa-sign-out-alt" style="width:16px;"></i> 退出登录
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="content">
+        <header class="top-bar">
+            <h2>{% block page_title %}{{ title }}{% endblock %}</h2>
+            <div class="header-actions">
+                <span class="sse-status" id="sseStatus" title="实时连接状态">
+                    <span class="sse-status-dot" id="sseStatusDot"></span>
+                    <span id="sseStatusText">已连接</span>
+                </span>
+                <span class="system-status" id="system-status">系统运行中</span>
+                <span class="datetime" id="current-time"></span>
+            </div>
+        </header>
+
+        <div class="page-content">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+    // 全局 fetch 超时：10秒无响应则中止请求
+    (function() {
+        var _origFetch = window.fetch;
+        window.fetch = function(url, options) {
+            var controller = new AbortController();
+            var timeoutId = setTimeout(function() { controller.abort(); }, 15000);
+            var opts = options || {};
+            opts.signal = controller.signal;
+            return _origFetch(url, opts).then(function(response) {
+                clearTimeout(timeoutId);
+                // 检测非JSON响应（可能是登录重定向返回的HTML）
+                var ct = response.headers.get('content-type') || '';
+                if (ct.indexOf('text/html') !== -1 && url.indexOf('/auth/') === -1) {
+                    console.warn('[GK] API返回HTML而非JSON，可能未登录:', url);
+                    // 跳转到登录页
+                    window.location.href = '/auth/login';
+                    throw new Error('会话已过期，请重新登录');
+                }
+                return response;
+            }).catch(function(err) {
+                clearTimeout(timeoutId);
+                if (err.name === 'AbortError') {
+                    console.error('[GK] 请求超时(15s):', url);
+                    throw new Error('请求超时，请检查网络连接');
+                }
+                throw err;
+            });
+        };
+    })();
+    </script>
+    <script src="{{ url_for('static', filename='js/sse-client.js') }}"></script>
+    <script>
+    function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// ===== 导航分组折叠 =====
+    var NAV_COLLAPSE_KEY = 'gatekeeper_nav_collapsed';
+
+    function getCollapsedGroups() {
+        try {
+            var saved = localStorage.getItem(NAV_COLLAPSE_KEY);
+            return saved ? JSON.parse(saved) : {};
+        } catch(e) {
+            return {};
+        }
+    }
+
+    function saveCollapsedGroups(groups) {
+        try {
+            localStorage.setItem(NAV_COLLAPSE_KEY, JSON.stringify(groups));
+        } catch(e) {}
+    }
+
+    function toggleNavGroup(groupId) {
+        var header = document.querySelector('.nav-group[data-group="' + groupId + '"] .nav-group-header');
+        var items = document.getElementById('nav-group-' + groupId);
+        if (!header || !items) return;
+
+        var collapsed = getCollapsedGroups();
+        var isCollapsed = items.classList.contains('collapsed');
+
+        if (isCollapsed) {
+            items.classList.remove('collapsed');
+            header.classList.remove('collapsed');
+            collapsed[groupId] = false;
+        } else {
+            items.classList.add('collapsed');
+            header.classList.add('collapsed');
+            collapsed[groupId] = true;
+        }
+        saveCollapsedGroups(collapsed);
+    }
+
+    // 初始化导航分组折叠状态
+    (function() {
+        var collapsed = getCollapsedGroups();
+        Object.keys(collapsed).forEach(function(groupId) {
+            if (collapsed[groupId]) {
+                var header = document.querySelector('.nav-group[data-group="' + groupId + '"] .nav-group-header');
+                var items = document.getElementById('nav-group-' + groupId);
+                if (header && items) {
+                    items.classList.add('collapsed');
+                    header.classList.add('collapsed');
+                }
+            }
+        });
+    })();
+
+    // ===== 侧边栏切换 (移动端) =====
+    (function() {
+        var sidebar = document.getElementById('sidebar');
+        var toggle = document.getElementById('sidebarToggle');
+        var overlay = document.getElementById('sidebarOverlay');
+
+        function openSidebar() {
+            sidebar.classList.add('open');
+            overlay.classList.add('active');
+            overlay.style.display = 'block';
+        }
+
+        function closeSidebar() {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('active');
+            setTimeout(function() {
+                if (!overlay.classList.contains('active')) {
+                    overlay.style.display = 'none';
+                }
+            }, 300);
+        }
+
+        toggle.addEventListener('click', function() {
+            if (sidebar.classList.contains('open')) {
+                closeSidebar();
+            } else {
+                openSidebar();
+            }
+        });
+
+        overlay.addEventListener('click', closeSidebar);
+
+        // 点击导航链接后关闭侧边栏 (移动端)
+        sidebar.addEventListener('click', function(e) {
+            if (e.target.tagName === 'A' && window.innerWidth <= 1024) {
+                closeSidebar();
+            }
+        });
+
+        // 窗口大小变化时重置
+        window.addEventListener('resize', function() {
+            if (window.innerWidth > 1024) {
+                sidebar.classList.remove('open');
+                overlay.classList.remove('active');
+                overlay.style.display = 'none';
+            }
+        });
+    })();
+
+    // 根据模块启用状态控制导航菜单可见性（非超管用户）
+    (function() {
+        fetch('/settings/api/modules')
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+                if (data.status !== 'ok') return;
+                // 超管看到所有菜单，不受模块开关限制
+                if (data.is_super_admin) return;
+                // 构建禁用模块ID集合
+                var disabledIds = {};
+                (data.data || []).forEach(function(m) {
+                    if (!m.enabled) disabledIds[m.id] = true;
+                });
+                // 隐藏禁用模块对应的导航菜单项
+                document.querySelectorAll('.nav-menu li[data-module]').forEach(function(li) {
+                    var mod = li.getAttribute('data-module');
+                    if (mod && mod !== 'none' && disabledIds[mod]) {
+                        li.style.display = 'none';
+                    }
+                });
+                // 如果当前页面所属模块被禁用，跳转到仪表盘
+                var path = window.location.pathname.replace(/\/$/, '');
+                var pathToModule = {
+                    '/ids': 'ids', '/vuln-scan': 'vuln_scan', '/waf': 'waf',
+                    '/dns-filter': 'dns_filter', '/vpn': 'vpn', '/honeypot': 'honeypot',
+                    '/gateway': 'gateway', '/dual-wan': 'dual_wan', '/routing': 'routing',
+                    '/siem': 'siem', '/qos': 'qos', '/isolation': 'isolation',
+                    '/compliance': 'compliance', '/ntconfig': 'ntconfig',
+                    '/rule-update': 'rule_update', '/app-control': 'app_control',
+                    '/content-security': 'content_security', '/gateway_av': 'gateway_av', '/ha': 'ha',
+                    '/ssl': 'ssl_inspector', '/zta': 'zero_trust', '/ldap': 'auth_ldap',
+                    '/sandbox': 'sandbox', '/ddos': 'ddos'
+                };
+                var currentModule = pathToModule[path];
+                if (currentModule && disabledIds[currentModule]) {
+                    window.location.href = '/';
+                }
+            })
+            .catch(function() {});
+    })();
+
+    // ===== 用户下拉菜单 =====
+    function toggleUserDropdown() {
+        var menu = document.getElementById('userDropdownMenu');
+        menu.classList.toggle('show');
+    }
+    function closeUserDropdown() {
+        var menu = document.getElementById('userDropdownMenu');
+        menu.classList.remove('show');
+    }
+    document.addEventListener('click', function(e) {
+        var dropdown = document.getElementById('userDropdown');
+        if (dropdown && !dropdown.contains(e.target)) {
+            closeUserDropdown();
+        }
+    });
+
+    // 时钟和运行时间由 main.js 中的 updateClock() 统一处理
+
+    // ===== 操作审计日志记录 =====
+    function sendAudit(payload) {
+        var blob = new Blob([payload], {type: 'application/json'});
+        if (navigator.sendBeacon) {
+            navigator.sendBeacon('/audit/api/record', blob);
+        } else {
+            fetch('/audit/api/record', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: payload,
+                keepalive: true,
+            });
+        }
+    }
+
+    function recordNavAction(menuText, href) {
+        var pathMap = {
+            '/': 'dashboard', '/ids/': 'ids', '/waf/': 'waf',
+            '/dns-filter/': 'dns_filter', '/gateway_av/': 'gateway_av',
+            '/ddos/': 'ddos', '/ssl/': 'ssl_inspector',
+            '/content-security/': 'content_security', '/app-control/': 'app_control',
+            '/network/': 'network', '/dual-wan/': 'dual_wan',
+            '/routing/': 'routing', '/qos/': 'qos', '/isolation/': 'isolation',
+            '/gateway/': 'gateway', '/vpn/': 'vpn', '/honeypot/': 'honeypot',
+            '/sandbox/': 'sandbox', '/zta/': 'zero_trust',
+            '/siem/': 'siem', '/vuln-scan/': 'vuln_scan',
+            '/compliance/': 'compliance', '/ntconfig/': 'ntconfig',
+            '/assets/': 'assets', '/rule-update/': 'rule_update',
+            '/threat-intel/': 'threat_intel',
+            '/alerts/': 'alerts', '/reports/': 'reports',
+            '/audit/': 'audit', '/ha/': 'ha', '/ldap/': 'auth_ldap',
+            '/system/backup/': 'backup', '/settings/': 'settings',
+        };
+        var mod = pathMap[href.replace(/\/$/, '')] || '';
+        sendAudit(JSON.stringify({
+            action: 'nav_click',
+            module: mod,
+            detail: '导航至: ' + menuText,
+        }));
+    }
+
+    // 全局可用的操作记录函数（供各页面调用）
+    window.recordAction = function(action, module, detail) {
+        sendAudit(JSON.stringify({ action: action, module: module, detail: detail }));
+    };
+
+    // ===== PJAX 无刷新导航 =====
+    (function() {
+        var mainEl = document.querySelector('main.content');
+        var pageContentEl = document.querySelector('.page-content');
+        var topBarEl = document.querySelector('.top-bar h2');
+        if (!mainEl || !pageContentEl) return;
+
+        // 记住每个页面的滚动位置
+        var scrollPositions = {};
+        var lastNavScrollTop = 0;
+
+        function saveScroll() {
+            scrollPositions[window.location.pathname] = window.scrollY;
+            var navMenu = document.querySelector('.nav-menu');
+            if (navMenu) lastNavScrollTop = navMenu.scrollTop;
+        }
+
+        function restoreScroll(path) {
+            var y = scrollPositions[path] || 0;
+            window.scrollTo(0, y);
+        }
+
+        // 拦截导航链接点击
+        document.querySelector('.nav-menu').addEventListener('click', function(e) {
+            var link = e.target.closest('a[href]');
+            if (!link) return;
+            var href = link.getAttribute('href');
+            if (!href || href.startsWith('http') || href.startsWith('#') || href.startsWith('javascript')) return;
+
+            e.preventDefault();
+            saveScroll();
+
+            // 更新 active 状态
+            document.querySelectorAll('.nav-menu a').forEach(function(a) { a.classList.remove('active'); });
+            link.classList.add('active');
+
+            // 记录导航审计日志
+            recordNavAction(link.textContent.trim(), href);
+
+            // 移动端关闭侧边栏
+            if (window.innerWidth <= 1024) {
+                var sidebar = document.getElementById('sidebar');
+                var overlay = document.getElementById('sidebarOverlay');
+                sidebar.classList.remove('open');
+                overlay.classList.remove('active');
+                overlay.style.display = 'none';
+            }
+
+            // 显示加载指示
+            pageContentEl.style.opacity = '0.5';
+
+            fetch(href, {
+                headers: { 'X-PJAX': 'true' }
+            })
+            .then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.text();
+            })
+            .then(function(html) {
+                // 解析返回的 HTML，提取 page-content 和 title
+                var parser = new DOMParser();
+                var doc = parser.parseFromString(html, 'text/html');
+
+                // 替换页面内容
+                var newContent = doc.querySelector('.page-content');
+                if (newContent) {
+                    pageContentEl.innerHTML = newContent.innerHTML;
+                }
+
+                // 更新标题
+                var newTitle = doc.querySelector('.top-bar h2');
+                if (newTitle && topBarEl) {
+                    topBarEl.textContent = newTitle.textContent;
+                }
+
+                // 更新浏览器 URL
+                history.pushState({}, '', href);
+
+                // 滚动页面到顶部
+                window.scrollTo(0, 0);
+
+                // 恢复侧边栏滚动位置（延迟到布局完成后）
+                requestAnimationFrame(function() {
+                    var navMenu = document.querySelector('.nav-menu');
+                    if (navMenu) navMenu.scrollTop = lastNavScrollTop;
+                });
+
+                // 执行新页面中的 script 标签
+                var scripts = doc.querySelectorAll('.page-content script');
+                scripts.forEach(function(script) {
+                    var newScript = document.createElement('script');
+                    if (script.src) {
+                        newScript.src = script.src;
+                    } else {
+                        newScript.textContent = script.textContent;
+                    }
+                    document.body.appendChild(newScript);
+                    // 执行完后移除（避免重复）
+                    if (!script.src) document.body.removeChild(newScript);
+                });
+
+                // PJAX 兼容：手动触发自定义事件，通知页面初始化代码执行
+                document.dispatchEvent(new CustomEvent('pjax:contentloaded'));
+
+                pageContentEl.style.opacity = '1';
+                restoreScroll(href);
+
+                // 记录菜单导航到审计日志
+                recordNavAction(link.textContent.trim(), href);
+            })
+            .catch(function(err) {
+                pageContentEl.style.opacity = '1';
+                // fetch 失败时回退到整页导航
+                window.location.href = href;
+            });
+        });
+
+        // 浏览器前进/后退
+        window.addEventListener('popstate', function(e) {
+            if (e.state === null && window.location.pathname === '/') return;
+            saveScroll();
+            window.location.reload();
+        });
+
+        // 页面离开时保存滚动位置
+        window.addEventListener('beforeunload', saveScroll);
+    })();
+    </script>
+
+{% block extra_js %}{% endblock %}
+</body>
+</html>

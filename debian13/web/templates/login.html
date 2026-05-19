@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - GateKeeper</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/favicon.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .two-factor-section {
+            display: none;
+            text-align: center;
+        }
+        .two-factor-section.active {
+            display: block;
+        }
+        .login-section.hidden {
+            display: none;
+        }
+        .tfa-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            display: inline-block;
+            width: 80px;
+            height: 80px;
+            line-height: 80px;
+            border-radius: 50%;
+            background: rgba(137, 180, 250, 0.1);
+            border: 2px solid #89b4fa;
+            color: #89b4fa;
+            font-size: 32px;
+        }
+        .tfa-input {
+            width: 100%;
+            padding: 14px 16px;
+            font-size: 24px;
+            text-align: center;
+            letter-spacing: 12px;
+            font-family: monospace;
+            background: #181825;
+            border: 1px solid #3a3a5c;
+            border-radius: 6px;
+            color: #cdd6f4;
+            box-sizing: border-box;
+            margin: 12px 0;
+        }
+        .tfa-input:focus {
+            outline: none;
+            border-color: #89b4fa;
+            box-shadow: 0 0 0 3px rgba(137, 180, 250, 0.2);
+        }
+        .tfa-hint {
+            color: #a6adc8;
+            font-size: 13px;
+            margin-bottom: 16px;
+        }
+        .tfa-back-btn {
+            background: none;
+            border: none;
+            color: #a6adc8;
+            cursor: pointer;
+            font-size: 13px;
+            margin-top: 12px;
+            text-decoration: underline;
+        }
+        .tfa-back-btn:hover {
+            color: #cdd6f4;
+        }
+        .change-password-section {
+            display: none;
+        }
+        .change-password-section.active {
+            display: block;
+        }
+        .pwd-requirements {
+            color: #a6adc8;
+            font-size: 12px;
+            margin: 8px 0 12px 0;
+            line-height: 1.6;
+        }
+        .pwd-requirements span {
+            display: block;
+        }
+        .pwd-requirements .req-ok {
+            color: #a6e3a1;
+        }
+        .pwd-requirements .req-fail {
+            color: #f38ba8;
+        }
+    </style>
+</head>
+<body class="login-page">
+    <div class="login-container">
+        <div class="login-logo">
+            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="GateKeeper" class="login-logo-img">
+            <h1>GateKeeper</h1>
+            <p>AI安全网络防御系统</p>
+        </div>
+
+        <!-- 登录表单 -->
+        <form id="login-form" class="login-form" onsubmit="handleLogin(event)">
+            <div class="form-group">
+                <label for="username">用户名</label>
+                <input type="text" id="username" name="username" required autocomplete="username" autofocus>
+            </div>
+            <div class="form-group">
+                <label for="password">密码</label>
+                <input type="password" id="password" name="password" required autocomplete="current-password">
+            </div>
+            <div id="login-error" class="error-message" style="display:none;"></div>
+            <button type="submit" class="btn btn-primary btn-block">登录</button>
+        </form>
+
+        <!-- 2FA验证表单 -->
+        <div id="tfa-section" class="two-factor-section">
+            <div class="tfa-icon">&#128274;</div>
+            <h3 style="color:#cdd6f4; margin:0 0 8px 0;">双因素认证</h3>
+            <p class="tfa-hint">请输入您的身份验证器应用中显示的6位数字验证码</p>
+            <form id="tfa-form" onsubmit="handle2FA(event)">
+                <input type="text" id="tfa-code" class="tfa-input" maxlength="6"
+                       pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code"
+                       placeholder="------" required autofocus>
+                <div id="tfa-error" class="error-message" style="display:none;"></div>
+                <button type="submit" class="btn btn-primary btn-block" id="tfa-submit-btn">验证</button>
+            </form>
+            <button class="tfa-back-btn" onclick="backToLogin()">返回登录</button>
+        </div>
+
+        <!-- 修改密码表单 -->
+        <div id="change-pwd-section" class="change-password-section">
+            <h3 style="color:#cdd6f4; margin:0 0 4px 0;">&#128274; 修改密码</h3>
+            <p class="tfa-hint" style="color:#f38ba8;">首次登录需要修改密码后才能继续使用</p>
+            <form id="change-pwd-form" onsubmit="handleChangePassword(event)">
+                <div class="form-group">
+                    <label for="old-password">当前密码</label>
+                    <input type="password" id="old-password" required autocomplete="current-password">
+                </div>
+                <div class="form-group">
+                    <label for="new-password">新密码</label>
+                    <input type="password" id="new-password" required autocomplete="new-password" oninput="checkPwdStrength()">
+                </div>
+                <div class="pwd-requirements" id="pwd-requirements">
+                    <span id="req-length">&#10007; 至少 8 个字符</span>
+                    <span id="req-upper">&#10007; 包含大写字母</span>
+                    <span id="req-lower">&#10007; 包含小写字母</span>
+                    <span id="req-digit">&#10007; 包含数字</span>
+                    <span id="req-special">&#10007; 包含特殊字符 (!@#$%^&*等)</span>
+                </div>
+                <div class="form-group">
+                    <label for="confirm-password">确认新密码</label>
+                    <input type="password" id="confirm-password" required autocomplete="new-password">
+                </div>
+                <div id="change-pwd-error" class="error-message" style="display:none;"></div>
+                <button type="submit" class="btn btn-primary btn-block" id="change-pwd-btn">确认修改</button>
+            </form>
+            <button class="tfa-back-btn" onclick="backToLoginFromChangePwd()">退出登录</button>
+        </div>
+    </div>
+    <script>
+    function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+var _tempToken = '';
+
+    function handleLogin(e) {
+        e.preventDefault();
+        var username = document.getElementById('username').value;
+        var password = document.getElementById('password').value;
+        var errorDiv = document.getElementById('login-error');
+        errorDiv.style.display = 'none';
+
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/auth/login', true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.onload = function() {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                    var data = JSON.parse(xhr.responseText);
+                    if (data.status === 'ok') {
+                        window.location.href = '/';
+                    } else if (data.status === '2fa_required') {
+                        // 需要2FA验证
+                        _tempToken = data.data.temp_token;
+                        show2FASection();
+                    } else if (data.status === 'must_change_password') {
+                        // 首次登录需要修改密码
+                        showChangePasswordSection();
+                    } else {
+                        errorDiv.textContent = data.message || '登录失败';
+                        errorDiv.style.display = 'block';
+                    }
+                } catch(e) {
+                    errorDiv.textContent = '服务器响应错误';
+                    errorDiv.style.display = 'block';
+                }
+            } else {
+                try {
+                    var data = JSON.parse(xhr.responseText);
+                    errorDiv.textContent = data.message || '登录失败';
+                } catch(e) {
+                    errorDiv.textContent = '登录请求失败 (HTTP ' + xhr.status + ')';
+                }
+                errorDiv.style.display = 'block';
+            }
+        };
+        xhr.onerror = function() {
+            errorDiv.textContent = '网络连接失败，请检查服务是否启动';
+            errorDiv.style.display = 'block';
+        };
+        xhr.send(JSON.stringify({username: username, password: password}));
+    }
+
+    function show2FASection() {
+        document.getElementById('login-form').style.display = 'none';
+        var tfaSection = document.getElementById('tfa-section');
+        tfaSection.classList.add('active');
+        document.getElementById('tfa-code').value = '';
+        document.getElementById('tfa-error').style.display = 'none';
+        document.getElementById('tfa-code').focus();
+    }
+
+    function backToLogin() {
+        document.getElementById('login-form').style.display = 'block';
+        var tfaSection = document.getElementById('tfa-section');
+        tfaSection.classList.remove('active');
+        _tempToken = '';
+        document.getElementById('password').value = '';
+        document.getElementById('username').focus();
+    }
+
+    function handle2FA(e) {
+        e.preventDefault();
+        var code = document.getElementById('tfa-code').value.replace(/\s/g, '');
+        var errorDiv = document.getElementById('tfa-error');
+        var submitBtn = document.getElementById('tfa-submit-btn');
+        errorDiv.style.display = 'none';
+
+        if (code.length !== 6 || !/^\d{6}$/.test(code)) {
+            errorDiv.textContent = '请输入6位数字验证码';
+            errorDiv.style.display = 'block';
+            return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = '验证中...';
+
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/auth/2fa/verify', true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.onload = function() {
+            submitBtn.disabled = false;
+            submitBtn.textContent = '验证';
+
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                    var data = JSON.parse(xhr.responseText);
+                    if (data.status === 'ok') {
+                        window.location.href = '/';
+                    } else {
+                        errorDiv.textContent = data.message || '验证失败';
+                        errorDiv.style.display = 'block';
+                        document.getElementById('tfa-code').value = '';
+                        document.getElementById('tfa-code').focus();
+                    }
+                } catch(e) {
+                    errorDiv.textContent = '服务器响应错误';
+                    errorDiv.style.display = 'block';
+                }
+            } else {
+                try {
+                    var data = JSON.parse(xhr.responseText);
+                    if (xhr.status === 401 && data.message && data.message.indexOf('过期') !== -1) {
+                        // 令牌过期，返回登录
+                        backToLogin();
+                        document.getElementById('login-error').textContent = '验证超时，请重新登录';
+                        document.getElementById('login-error').style.display = 'block';
+                    } else {
+                        errorDiv.textContent = data.message || '验证失败';
+                        errorDiv.style.display = 'block';
+                    }
+                } catch(e) {
+                    errorDiv.textContent = '验证请求失败';
+                    errorDiv.style.display = 'block';
+                }
+                document.getElementById('tfa-code').value = '';
+                document.getElementById('tfa-code').focus();
+            }
+        };
+        xhr.onerror = function() {
+            submitBtn.disabled = false;
+            submitBtn.textContent = '验证';
+            errorDiv.textContent = '网络连接失败';
+            errorDiv.style.display = 'block';
+        };
+        xhr.send(JSON.stringify({temp_token: _tempToken, code: code}));
+    }
+
+    // ===== 修改密码相关函数 =====
+
+    function showChangePasswordSection() {
+        document.getElementById('login-form').style.display = 'none';
+        document.getElementById('tfa-section').classList.remove('active');
+        document.getElementById('change-pwd-section').classList.add('active');
+        document.getElementById('old-password').value = document.getElementById('password').value;
+        document.getElementById('new-password').value = '';
+        document.getElementById('confirm-password').value = '';
+        document.getElementById('change-pwd-error').style.display = 'none';
+        document.getElementById('new-password').focus();
+    }
+
+    function backToLoginFromChangePwd() {
+        document.getElementById('change-pwd-section').classList.remove('active');
+        document.getElementById('login-form').style.display = 'block';
+        document.getElementById('password').value = '';
+        document.getElementById('username').focus();
+    }
+
+    function checkPwdStrength() {
+        var pwd = document.getElementById('new-password').value;
+        var checks = {
+            'req-length': pwd.length >= 8,
+            'req-upper': /[A-Z]/.test(pwd),
+            'req-lower': /[a-z]/.test(pwd),
+            'req-digit': /[0-9]/.test(pwd),
+            'req-special': /[!@#$%^&*()_+\-=\[\]{};:\'",.<>\/?\\|`~]/.test(pwd)
+        };
+        for (var id in checks) {
+            var el = document.getElementById(id);
+            if (checks[id]) {
+                el.className = 'req-ok';
+                el.innerHTML = '&#10003; ' + el.textContent.replace(/^[\u2713\u2717]\s*/, '');
+            } else {
+                el.className = 'req-fail';
+                el.innerHTML = '&#10007; ' + el.textContent.replace(/^[\u2713\u2717]\s*/, '');
+            }
+        }
+    }
+
+    function handleChangePassword(e) {
+        e.preventDefault();
+        var oldPwd = document.getElementById('old-password').value;
+        var newPwd = document.getElementById('new-password').value;
+        var confirmPwd = document.getElementById('confirm-password').value;
+        var errorDiv = document.getElementById('change-pwd-error');
+        var submitBtn = document.getElementById('change-pwd-btn');
+        errorDiv.style.display = 'none';
+
+        if (newPwd !== confirmPwd) {
+            errorDiv.textContent = '两次输入的新密码不一致';
+            errorDiv.style.display = 'block';
+            return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = '修改中...';
+
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/settings/api/change-password', true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.onload = function() {
+            submitBtn.disabled = false;
+            submitBtn.textContent = '确认修改';
+
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                    var data = JSON.parse(xhr.responseText);
+                    if (data.status === 'ok') {
+                        alert('密码修改成功！请使用新密码重新登录。');
+                        window.location.href = '/auth/login';
+                    } else {
+                        errorDiv.textContent = data.message || '修改失败';
+                        errorDiv.style.display = 'block';
+                    }
+                } catch(ex) {
+                    errorDiv.textContent = '服务器响应错误';
+                    errorDiv.style.display = 'block';
+                }
+            } else {
+                try {
+                    var data = JSON.parse(xhr.responseText);
+                    errorDiv.textContent = data.message || '修改失败';
+                } catch(ex) {
+                    errorDiv.textContent = '修改请求失败 (HTTP ' + xhr.status + ')';
+                }
+                errorDiv.style.display = 'block';
+            }
+        };
+        xhr.onerror = function() {
+            submitBtn.disabled = false;
+            submitBtn.textContent = '确认修改';
+            errorDiv.textContent = '网络连接失败';
+            errorDiv.style.display = 'block';
+        };
+        xhr.send(JSON.stringify({old_password: oldPwd, new_password: newPwd}));
+    }
+    </script>
+</body>
+</html>

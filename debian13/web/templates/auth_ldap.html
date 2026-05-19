@@ -1,0 +1,521 @@
+{% extends "base.html" %}
+
+{% block title %}LDAP 身份集成{% endblock %}
+
+{% block content %}
+<!-- 统计卡片 -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>LDAP用户总数</h3>
+        <div class="value" id="stat-total-users">-</div>
+    </div>
+    <div class="stat-card enabled">
+        <h3>已同步用户</h3>
+        <div class="value" id="stat-synced-users">-</div>
+    </div>
+    <div class="stat-card">
+        <h3>活跃用户</h3>
+        <div class="value" id="stat-active-users">-</div>
+    </div>
+    <div class="stat-card">
+        <h3>上次同步时间</h3>
+        <div class="value" id="stat-last-sync" style="font-size: 16px;">-</div>
+    </div>
+</div>
+
+<!-- LDAP配置 -->
+<div class="section">
+    <h2>LDAP 服务器配置</h2>
+    <div class="config-form">
+        <div class="form-group">
+            <label>服务器地址</label>
+            <input type="text" id="config-host" placeholder="如 ldap.example.com 或 10.0.0.1">
+        </div>
+        <div class="form-group">
+            <label>端口</label>
+            <select id="config-port">
+                <option value="389">389 (LDAP - 非加密)</option>
+                <option value="636">636 (LDAPS - SSL/TLS)</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>绑定DN</label>
+            <input type="text" id="config-bind-dn" placeholder="如 cn=admin,dc=example,dc=com">
+        </div>
+        <div class="form-group">
+            <label>绑定密码</label>
+            <input type="password" id="config-bind-pass" placeholder="输入绑定密码">
+        </div>
+    </div>
+</div>
+
+<!-- 搜索配置 -->
+<div class="section">
+    <h2>搜索配置</h2>
+    <div class="config-form">
+        <div class="form-group">
+            <label>用户搜索 Base DN</label>
+            <input type="text" id="config-user-base-dn" placeholder="如 ou=users,dc=example,dc=com">
+        </div>
+        <div class="form-group">
+            <label>用户搜索 Filter</label>
+            <input type="text" id="config-user-filter" placeholder="如 (objectClass=person)">
+        </div>
+        <div class="form-group">
+            <label>组搜索 Base DN</label>
+            <input type="text" id="config-group-base-dn" placeholder="如 ou=groups,dc=example,dc=com">
+        </div>
+        <div class="form-group">
+            <label>组到角色映射</label>
+            <textarea id="config-role-mapping" rows="3" placeholder='JSON格式，如:&#10;{"admins": "admin", "developers": "editor", "users": "viewer"}'></textarea>
+        </div>
+    </div>
+</div>
+
+<!-- 操作按钮 -->
+<div class="section">
+    <h2>操作</h2>
+    <div class="action-bar">
+        <button class="btn btn-primary" onclick="testConnection()">测试连接</button>
+        <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
+        <button class="btn btn-secondary" onclick="syncUsers()">同步用户</button>
+    </div>
+</div>
+
+<!-- 同步状态 -->
+<div class="section">
+    <h2>同步状态</h2>
+    <div class="sync-panel" id="sync-panel">
+        <p style="color: var(--text-muted);">暂无同步记录</p>
+    </div>
+</div>
+
+<!-- 同步日志 -->
+<div class="section">
+    <h2>同步日志</h2>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>时间</th>
+                <th>操作</th>
+                <th>状态</th>
+                <th>详情</th>
+            </tr>
+        </thead>
+        <tbody id="sync-logs">
+            <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 统计卡片 */
+    .stat-card.enabled .value { color: #86efac; }
+
+    /* 区块 */
+    .section { margin-bottom: 30px; }
+    .section h2 { color: var(--primary); margin-bottom: 15px; font-size: 18px; }
+
+    /* 配置表单 */
+    .config-form {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 15px;
+    }
+    .form-group label {
+        display: block;
+        color: var(--text-muted);
+        font-size: 13px;
+        margin-bottom: 5px;
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        width: 100%;
+        padding: 8px 10px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-size: 14px;
+        box-sizing: border-box;
+    }
+    .form-group textarea {
+        resize: vertical;
+        font-family: monospace;
+        font-size: 13px;
+    }
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+        outline: none;
+        border-color: var(--primary);
+    }
+
+    /* 操作栏 */
+    .action-bar {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    /* 同步面板 */
+    .sync-panel {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 20px;
+    }
+    .sync-panel p { margin: 4px 0; font-size: 14px; }
+    .sync-progress {
+        margin-top: 10px;
+    }
+    .sync-progress .progress-bar {
+        width: 100%;
+        height: 8px;
+        background: var(--border);
+        border-radius: 4px;
+        overflow: hidden;
+        margin-top: 6px;
+    }
+    .sync-progress .progress-fill {
+        height: 100%;
+        background: var(--primary);
+        border-radius: 4px;
+        transition: width 0.3s ease;
+    }
+    .sync-progress .progress-text {
+        font-size: 13px;
+        color: var(--text-muted);
+        margin-top: 4px;
+    }
+
+    /* 数据表格 */
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .data-table th, .data-table td {
+        padding: 10px 12px;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+        font-size: 14px;
+    }
+    .data-table th {
+        color: var(--text-muted);
+        font-weight: 600;
+        font-size: 13px;
+    }
+    .data-table tr:hover {
+        background: rgba(37, 99, 235, 0.05);
+    }
+
+    /* 标签 */
+    .tag {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .tag-success { background: rgba(134, 239, 172, 0.2); color: #86efac; }
+    .tag-error { background: rgba(252, 165, 165, 0.2); color: #fca5a5; }
+    .tag-warning { background: rgba(252, 211, 77, 0.2); color: #fcd34d; }
+    .tag-info { background: rgba(147, 197, 253, 0.2); color: #93c5fd; }
+    .tag-running { background: rgba(147, 197, 253, 0.2); color: #93c5fd; }
+
+    /* 按钮 */
+    .btn {
+        padding: 6px 14px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+        transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-secondary { background: #64748b; color: #fff; }
+    .btn-outline {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+    }
+    .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+
+    /* Toast 通知 */
+    .toast-container {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 10000;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .toast {
+        padding: 10px 20px;
+        border-radius: 6px;
+        font-size: 14px;
+        color: #fff;
+        background: var(--primary);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .toast-success { background: #22c55e; }
+    .toast-error { background: #ef4444; }
+    .toast-warning { background: #f59e0b; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// ---- Toast 通知 ----
+    function showToast(message, type) {
+        type = type || 'info';
+        var container = document.getElementById('toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.className = 'toast-container';
+            container.id = 'toast-container';
+            document.body.appendChild(container);
+        }
+        var toast = document.createElement('div');
+        toast.className = 'toast toast-' + type;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(function() {
+            toast.style.opacity = '0';
+            toast.style.transition = 'opacity 0.3s ease';
+            setTimeout(function() { toast.remove(); }, 300);
+        }, 3000);
+    }
+
+    // ---- 加载状态 ----
+    function loadStatus() {
+        fetch('/ldap/api/config')
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+                if (data.status === 'ok') {
+                    var c = data.data;
+                    document.getElementById('config-host').value = c.host || '';
+                    document.getElementById('config-port').value = String(c.port || 389);
+                    document.getElementById('config-bind-dn').value = c.bind_dn || '';
+                    document.getElementById('config-bind-pass').value = ''; // 密码不回显
+                    document.getElementById('config-user-base-dn').value = c.user_base_dn || '';
+                    document.getElementById('config-user-filter').value = c.user_filter || '';
+                    document.getElementById('config-group-base-dn').value = c.group_base_dn || '';
+                    if (c.role_mapping) {
+                        document.getElementById('config-role-mapping').value = typeof c.role_mapping === 'string' ? c.role_mapping : JSON.stringify(c.role_mapping, null, 2);
+                    }
+                }
+            })
+            .catch(function(e) { console.error('加载配置失败:', e); });
+    }
+
+    // ---- 加载统计 ----
+    function loadStats() {
+        fetch('/ldap/api/stats')
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+                if (data.status === 'ok') {
+                    var d = data.data;
+                    document.getElementById('stat-total-users').textContent = d.total_users || 0;
+                    document.getElementById('stat-synced-users').textContent = d.synced_users || 0;
+                    document.getElementById('stat-active-users').textContent = d.active_users || 0;
+                    var lastSync = d.last_sync_time;
+                    if (lastSync) {
+                        document.getElementById('stat-last-sync').textContent = new Date(lastSync).toLocaleString();
+                    } else {
+                        document.getElementById('stat-last-sync').textContent = '从未同步';
+                    }
+                }
+            })
+            .catch(function(e) { console.error('加载统计失败:', e); });
+    }
+
+    // ---- 保存配置 ----
+    function saveConfig() {
+        var host = document.getElementById('config-host').value.trim();
+        var port = parseInt(document.getElementById('config-port').value);
+        var bindDn = document.getElementById('config-bind-dn').value.trim();
+        var bindPass = document.getElementById('config-bind-pass').value;
+        var userBaseDn = document.getElementById('config-user-base-dn').value.trim();
+        var userFilter = document.getElementById('config-user-filter').value.trim();
+        var groupBaseDn = document.getElementById('config-group-base-dn').value.trim();
+        var roleMappingStr = document.getElementById('config-role-mapping').value.trim();
+
+        if (!host) { showToast('请输入服务器地址', 'warning'); return; }
+        if (!bindDn) { showToast('请输入绑定DN', 'warning'); return; }
+
+        var roleMapping = {};
+        if (roleMappingStr) {
+            try {
+                roleMapping = JSON.parse(roleMappingStr);
+            } catch (e) {
+                showToast('角色映射JSON格式错误: ' + e.message, 'error');
+                return;
+            }
+        }
+
+        var config = {
+            host: host,
+            port: port,
+            bind_dn: bindDn,
+            user_base_dn: userBaseDn,
+            user_filter: userFilter,
+            group_base_dn: groupBaseDn,
+            role_mapping: roleMapping
+        };
+        if (bindPass) {
+            config.bind_password = bindPass;
+        }
+
+        fetch('/ldap/api/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(config)
+        })
+        .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                showToast('配置已保存', 'success');
+            } else {
+                showToast('保存失败: ' + (data.message || '未知错误'), 'error');
+            }
+        })
+        .catch(function(e) { showToast('请求失败: ' + e.message, 'error'); });
+    }
+
+    // ---- 测试连接 ----
+    function testConnection() {
+        var host = document.getElementById('config-host').value.trim();
+        var port = parseInt(document.getElementById('config-port').value);
+        var bindDn = document.getElementById('config-bind-dn').value.trim();
+        var bindPass = document.getElementById('config-bind-pass').value;
+
+        if (!host) { showToast('请先填写服务器地址', 'warning'); return; }
+        if (!bindDn) { showToast('请先填写绑定DN', 'warning'); return; }
+
+        showToast('正在测试LDAP连接...', 'info');
+
+        fetch('/ldap/api/test', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                host: host,
+                port: port,
+                bind_dn: bindDn,
+                bind_password: bindPass
+            })
+        })
+        .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                var d = data.data;
+                showToast('连接成功 - 服务器: ' + (d.server_info || host) + ', 响应时间: ' + (d.response_time || '-') + 'ms', 'success');
+            } else {
+                showToast('连接失败: ' + (data.message || '未知错误'), 'error');
+            }
+        })
+        .catch(function(e) { showToast('请求失败: ' + e.message, 'error'); });
+    }
+
+    // ---- 同步用户 ----
+    function syncUsers() {
+        if (!confirm('确定要同步LDAP用户吗？这可能需要一些时间。')) return;
+
+        showToast('正在同步用户...', 'info');
+        var panel = document.getElementById('sync-panel');
+        panel.innerHTML =
+            '<div class="sync-progress">' +
+                '<p>同步进行中，请稍候...</p>' +
+                '<div class="progress-bar"><div class="progress-fill" style="width: 0%;"></div></div>' +
+                '<div class="progress-text">准备中...</div>' +
+            '</div>';
+
+        fetch('/ldap/api/sync', { method: 'POST' })
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+                if (data.status === 'ok') {
+                    var d = data.data;
+                    panel.innerHTML =
+                        '<p><strong>同步完成</strong></p>' +
+                        '<p>新增用户: ' + (d.added || 0) + '</p>' +
+                        '<p>更新用户: ' + (d.updated || 0) + '</p>' +
+                        '<p>跳过用户: ' + (d.skipped || 0) + '</p>' +
+                        '<p>失败: ' + (d.failed || 0) + '</p>' +
+                        (d.errors && d.errors.length > 0 ? '<p style="color: #fca5a5; margin-top: 8px;">错误: ' + d.errors.join(', ') + '</p>' : '');
+                    showToast('用户同步完成', 'success');
+                    loadStats();
+                    loadSyncLogs();
+                } else {
+                    panel.innerHTML = '<p style="color: #fca5a5;">同步失败: ' + (data.message || '未知错误') + '</p>';
+                    showToast('同步失败: ' + (data.message || '未知错误'), 'error');
+                }
+            })
+            .catch(function(e) {
+                panel.innerHTML = '<p style="color: #fca5a5;">请求失败: ' + e.message + '</p>';
+                showToast('请求失败: ' + e.message, 'error');
+            });
+    }
+
+    // ---- 加载同步日志 ----
+    function loadSyncLogs() {
+        fetch('/ldap/api/stats')
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+                var tbody = document.getElementById('sync-logs');
+                if (data.status === 'ok' && data.data.logs && data.data.logs.length > 0) {
+                    tbody.innerHTML = data.data.logs.map(function(log) {
+                        var ts = log.timestamp ? new Date(log.timestamp).toLocaleString() : '-';
+                        var statusClass = 'tag-success';
+                        var statusText = log.status || 'success';
+                        if (statusText === 'error' || statusText === 'failed') {
+                            statusClass = 'tag-error';
+                            statusText = '失败';
+                        } else if (statusText === 'running' || statusText === 'syncing') {
+                            statusClass = 'tag-running';
+                            statusText = '进行中';
+                        } else if (statusText === 'warning') {
+                            statusClass = 'tag-warning';
+                            statusText = '警告';
+                        } else {
+                            statusText = '成功';
+                        }
+
+                        var opMap = { sync: '用户同步', test: '连接测试', config: '配置变更' };
+                        var opText = opMap[log.operation] || log.operation || '-';
+
+                        return '<tr>' +
+                            '<td style="white-space: nowrap;">' + ts + '</td>' +
+                            '<td><span class="tag tag-info">' + opText + '</span></td>' +
+                            '<td><span class="tag ' + statusClass + '">' + statusText + '</span></td>' +
+                            '<td>' + (log.detail || '-') + '</td>' +
+                            '</tr>';
+                    }).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">暂无同步日志</td></tr>';
+                }
+            })
+            .catch(function(e) { console.error('加载同步日志失败:', e); });
+    }
+
+    // ---- 初始化 ----
+    loadStatus();
+    loadStats();
+    loadSyncLogs();
+</script>
+{% endblock %}

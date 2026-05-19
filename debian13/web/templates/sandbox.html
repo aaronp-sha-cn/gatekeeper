@@ -1,0 +1,1057 @@
+{% extends "base.html" %}
+
+{% block title %}沙箱分析{% endblock %}
+
+{% block content %}
+<!-- 统计概览 -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>总分析数</h3>
+        <div class="value" id="stat-total">-</div>
+    </div>
+    <div class="stat-card critical">
+        <h3>恶意文件</h3>
+        <div class="value" id="stat-malicious">-</div>
+    </div>
+    <div class="stat-card warning">
+        <h3>可疑文件</h3>
+        <div class="value" id="stat-suspicious">-</div>
+    </div>
+    <div class="stat-card">
+        <h3>平均分析时长</h3>
+        <div class="value" id="stat-avg-time">-</div>
+    </div>
+</div>
+
+<!-- 文件提交区域 -->
+<div class="section">
+    <h2>文件提交</h2>
+    <div class="upload-area" id="upload-area">
+        <div class="upload-placeholder" id="upload-placeholder">
+            <div class="upload-icon">&#128194;</div>
+            <p>拖拽文件到此处，或点击选择文件</p>
+            <p class="upload-hint">支持 EXE、DLL、PDF、Office 文档等，最大 100MB</p>
+        </div>
+        <input type="file" id="file-input" style="display: none;">
+        <div class="upload-progress" id="upload-progress" style="display: none;">
+            <span id="upload-filename"></span>
+            <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+            <span id="upload-status">上传中...</span>
+        </div>
+    </div>
+</div>
+
+<!-- URL 提交区域 -->
+<div class="section">
+    <h2>URL 提交</h2>
+    <div class="url-submit-form">
+        <input type="text" id="url-input" placeholder="输入要分析的 URL，如 https://example.com/suspicious.exe">
+        <button class="btn btn-primary" id="btn-submit-url">提交分析</button>
+    </div>
+</div>
+
+<!-- 任务列表 -->
+<div class="section">
+    <div class="section-header">
+        <h2>分析任务</h2>
+        <div class="section-actions">
+            <button class="btn btn-secondary" id="btn-refresh-tasks">刷新</button>
+        </div>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>任务ID</th>
+                <th>文件名/URL</th>
+                <th>提交时间</th>
+                <th>状态</th>
+                <th>风险评分</th>
+                <th>后端</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="tasks-tbody">
+            <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- 配置区域 -->
+<div class="section">
+    <h2>沙箱配置</h2>
+    <div class="config-form">
+        <div class="form-group">
+            <label>Cuckoo API 地址</label>
+            <input type="text" id="cfg-cuckoo-url" placeholder="http://127.0.0.1:8090/api">
+        </div>
+        <div class="form-group">
+            <label>分析超时 (秒)</label>
+            <input type="number" id="cfg-timeout" placeholder="300" min="60" max="3600">
+        </div>
+        <div class="form-group">
+            <label>最大并发任务数</label>
+            <input type="number" id="cfg-concurrent" placeholder="5" min="1" max="20">
+        </div>
+        <div class="form-group">
+            <label>自动分析 (ClamAV + 沙箱)</label>
+            <select id="cfg-auto-analyze">
+                <option value="true">开启</option>
+                <option value="false">关闭</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>ClamAV 扫描</label>
+            <select id="cfg-clamav">
+                <option value="true">开启</option>
+                <option value="false">关闭</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>强制本地模拟</label>
+            <select id="cfg-local-mode">
+                <option value="false">关闭</option>
+                <option value="true">开启</option>
+            </select>
+        </div>
+        <div class="form-group" style="display: flex; align-items: flex-end;">
+            <button class="btn btn-primary" id="btn-save-config">保存配置</button>
+        </div>
+    </div>
+</div>
+
+<!-- 报告详情模态框 -->
+<div class="modal-overlay" id="report-modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>分析报告</h3>
+            <button class="modal-close" id="modal-close">&times;</button>
+        </div>
+        <div class="modal-body" id="report-body">
+            <!-- 报告内容将动态填充 -->
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 统计卡片 */
+    .stat-card .value { color: #60a5fa; }
+    .stat-card.warning .value { color: #fcd34d; }
+
+    /* 区块 */
+    .section h2 { color: var(--primary); margin-bottom: 15px; font-size: 18px; }
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    .section-header h2 { margin-bottom: 0; }
+    .section-actions { display: flex; gap: 10px; align-items: center; }
+
+    /* 上传区域 */
+    .upload-area {
+        border: 2px dashed var(--border);
+        border-radius: 8px;
+        padding: 40px 20px;
+        text-align: center;
+        cursor: pointer;
+        transition: border-color 0.2s, background 0.2s;
+    }
+    .upload-area:hover, .upload-area.drag-over {
+        border-color: var(--primary);
+        background: rgba(37, 99, 235, 0.05);
+    }
+    .upload-icon { font-size: 48px; margin-bottom: 10px; }
+    .upload-hint { color: var(--text-muted); font-size: 12px; margin-top: 5px; }
+    .upload-progress { text-align: center; }
+    .upload-progress span { display: block; margin-bottom: 8px; color: var(--text-muted); font-size: 13px; }
+    .progress-bar {
+        width: 100%;
+        height: 6px;
+        background: var(--border);
+        border-radius: 3px;
+        overflow: hidden;
+        margin-bottom: 8px;
+    }
+    .progress-fill {
+        height: 100%;
+        background: var(--primary);
+        border-radius: 3px;
+        transition: width 0.3s;
+        width: 0%;
+    }
+
+    /* URL 提交 */
+    .url-submit-form {
+        display: flex;
+        gap: 10px;
+    }
+    .url-submit-form input {
+        flex: 1;
+        padding: 8px 12px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-size: 13px;
+    }
+    .url-submit-form input:focus {
+        outline: none;
+        border-color: var(--primary);
+    }
+
+    /* 数据表格 */
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; }
+    th { color: var(--text-muted); font-weight: 600; white-space: nowrap; }
+    tr:hover { background: rgba(37, 99, 235, 0.05); }
+    .target-name {
+        max-width: 250px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-family: monospace;
+        font-size: 12px;
+    }
+
+    /* 状态标签 */
+    .status-badge {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .status-pending { background: rgba(148, 163, 184, 0.2); color: #94a3b8; }
+    .status-running { background: rgba(96, 165, 250, 0.2); color: #60a5fa; }
+    .status-completed, .status-reported { background: rgba(134, 239, 172, 0.2); color: #86efac; }
+    .status-failed { background: rgba(252, 165, 165, 0.2); color: #fca5a5; }
+    .status-deleted { background: rgba(148, 163, 184, 0.1); color: #64748b; }
+
+    /* 风险评分 */
+    .risk-score {
+        font-weight: bold;
+        font-size: 14px;
+    }
+    .risk-clean { color: #86efac; }
+    .risk-low { color: #93c5fd; }
+    .risk-medium { color: #fcd34d; }
+    .risk-high { color: #fb923c; }
+    .risk-critical { color: #fca5a5; }
+
+    /* 按钮 */
+    .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-danger:hover { opacity: 0.9; }
+    .btn-success { background: var(--success); color: white; }
+    .btn-success:hover { opacity: 0.9; }
+    .btn-secondary { background: var(--border); color: var(--text); }
+    .btn-secondary:hover { opacity: 0.8; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+    /* 配置表单 */
+    .config-form {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 15px;
+    }
+    .form-group { display: flex; flex-direction: column; gap: 4px; }
+    .form-group label { color: var(--text-muted); font-size: 13px; }
+    .form-group input, .form-group select {
+        padding: 8px 12px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-size: 13px;
+    }
+    .form-group input:focus, .form-group select:focus {
+        outline: none;
+        border-color: var(--primary);
+    }
+
+    /* 模态框 */
+    .modal-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 9000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .modal-content {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        width: 90%;
+        max-width: 800px;
+        max-height: 85vh;
+        display: flex;
+        flex-direction: column;
+    }
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border);
+    }
+    .modal-header h3 { font-size: 16px; color: var(--text); margin: 0; }
+    .modal-close {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        font-size: 24px;
+        cursor: pointer;
+        padding: 0 4px;
+    }
+    .modal-close:hover { color: var(--text); }
+    .modal-body {
+        padding: 20px;
+        overflow-y: auto;
+        flex: 1;
+    }
+
+    /* 报告内容样式 */
+    .report-section { margin-bottom: 20px; }
+    .report-section h4 {
+        color: var(--primary);
+        font-size: 14px;
+        margin-bottom: 8px;
+        padding-bottom: 4px;
+        border-bottom: 1px solid var(--border);
+    }
+    .report-info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 8px;
+    }
+    .report-info-item {
+        display: flex;
+        gap: 8px;
+        font-size: 13px;
+    }
+    .report-info-item .label { color: var(--text-muted); white-space: nowrap; }
+    .report-info-item .value { color: var(--text); word-break: break-all; }
+    .report-summary {
+        padding: 10px 14px;
+        background: rgba(51, 65, 85, 0.3);
+        border-radius: 6px;
+        font-size: 13px;
+        color: var(--text);
+        line-height: 1.6;
+    }
+    .report-score {
+        text-align: center;
+        padding: 16px;
+        margin-bottom: 16px;
+        border-radius: 8px;
+    }
+    .report-score .score-value { font-size: 48px; font-weight: bold; }
+    .report-score .score-label { font-size: 14px; margin-top: 4px; }
+    .report-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    .report-list li {
+        padding: 6px 0;
+        font-size: 13px;
+        border-bottom: 1px solid rgba(51, 65, 85, 0.3);
+        color: var(--text);
+    }
+    .report-list li:last-child { border-bottom: none; }
+    .report-list .mono {
+        font-family: monospace;
+        font-size: 12px;
+        color: #93c5fd;
+    }
+    .report-list .severity {
+        display: inline-block;
+        padding: 1px 6px;
+        border-radius: 3px;
+        font-size: 11px;
+        margin-left: 6px;
+    }
+    .severity-low { background: rgba(134, 239, 172, 0.2); color: #86efac; }
+    .severity-medium { background: rgba(252, 211, 77, 0.2); color: #fcd34d; }
+    .severity-high { background: rgba(251, 146, 60, 0.2); color: #fb923c; }
+    .severity-critical { background: rgba(252, 165, 165, 0.2); color: #fca5a5; }
+    .empty-hint { color: var(--text-muted); font-size: 13px; font-style: italic; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    'use strict';
+
+    // ============================================================
+    // 工具函数
+    // ============================================================
+
+    /** HTML 转义 */
+    function escapeHtml(text) {
+        if (!text) return '';
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    /** 格式化文件大小 */
+    function formatSize(bytes) {
+        if (!bytes || bytes === 0) return '0 B';
+        var units = ['B', 'KB', 'MB', 'GB'];
+        var k = 1024;
+        var i = Math.floor(Math.log(bytes) / Math.log(k));
+        return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + units[i];
+    }
+
+    /** 格式化时间 */
+    function formatTime(dateStr) {
+        if (!dateStr) return '-';
+        try {
+            var d = new Date(dateStr);
+            var pad = function(n) { return String(n).padStart(2, '0'); };
+            return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+                   ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+        } catch (e) {
+            return dateStr;
+        }
+    }
+
+    /** 状态中文映射 */
+    function statusText(status) {
+        var map = {
+            'pending': '等待中',
+            'running': '分析中',
+            'completed': '已完成',
+            'reported': '已报告',
+            'failed': '失败',
+            'deleted': '已删除'
+        };
+        return map[status] || status;
+    }
+
+    /** 风险等级中文映射 */
+    function riskText(level) {
+        var map = {
+            'clean': '安全',
+            'low': '低风险',
+            'medium': '中风险',
+            'high': '高风险',
+            'critical': '极高风险'
+        };
+        return map[level] || level;
+    }
+
+    // ============================================================
+    // 加载统计数据
+    // ============================================================
+
+    function loadStats() {
+        fetch('/sandbox/api/stats')
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+                if (data.status === 'ok') {
+                    var d = data.data;
+                    document.getElementById('stat-total').textContent = d.total_tasks || 0;
+                    document.getElementById('stat-malicious').textContent = d.malicious_tasks || 0;
+                    document.getElementById('stat-suspicious').textContent = d.suspicious_tasks || 0;
+                    document.getElementById('stat-avg-time').textContent = (d.avg_analysis_time || 0) + 's';
+                }
+            })
+            .catch(function(err) {
+                console.error('加载统计失败:', err);
+            });
+    }
+
+    // ============================================================
+    // 加载任务列表
+    // ============================================================
+
+    function loadTasks() {
+        fetch('/sandbox/api/tasks?limit=50')
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+                var tbody = document.getElementById('tasks-tbody');
+                if (data.status === 'ok' && data.data.tasks && data.data.tasks.length > 0) {
+                    tbody.innerHTML = data.data.tasks.map(function(t) {
+                        var name = escapeHtml(t.target_name || t.target_url || '-');
+                        var statusClass = 'status-' + (t.status || 'pending');
+                        var statusLabel = statusText(t.status);
+
+                        // 风险评分（需要报告才有）
+                        var riskHtml = '<span style="color: var(--text-muted);">-</span>';
+                        if (t.status === 'reported' || t.status === 'completed') {
+                            // 异步获取报告中的风险评分
+                            riskHtml = '<span class="risk-score" data-task="' + t.task_id + '">加载中...</span>';
+                        }
+
+                        // 操作按钮
+                        var actions = '';
+                        if (t.status === 'reported' || t.status === 'completed') {
+                            actions += '<button class="btn btn-primary btn-sm" onclick="viewReport(\'' + t.task_id + '\')">查看报告</button> ';
+                        }
+                        actions += '<button class="btn btn-danger btn-sm" onclick="deleteTask(\'' + t.task_id + '\')">删除</button>';
+
+                        return '<tr>' +
+                            '<td class="mono">' + t.task_id + '</td>' +
+                            '<td class="target-name" title="' + name + '">' + name + '</td>' +
+                            '<td>' + formatTime(t.submitted_at) + '</td>' +
+                            '<td><span class="status-badge ' + statusClass + '">' + statusLabel + '</span></td>' +
+                            '<td>' + riskHtml + '</td>' +
+                            '<td>' + (t.backend || '-') + '</td>' +
+                            '<td>' + actions + '</td>' +
+                        '</tr>';
+                    }).join('');
+
+                    // 异步加载已完成任务的风险评分
+                    loadRiskScores(data.data.tasks);
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">暂无分析任务</td></tr>';
+                }
+            })
+            .catch(function(err) {
+                console.error('加载任务列表失败:', err);
+            });
+    }
+
+    /** 异步加载已完成任务的风险评分 */
+    function loadRiskScores(tasks) {
+        tasks.forEach(function(t) {
+            if (t.status === 'reported' || t.status === 'completed') {
+                fetch('/sandbox/api/task/' + t.task_id)
+                    .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+                    .then(function(data) {
+                        if (data.status === 'ok' && data.data.report) {
+                            var report = data.data.report;
+                            var el = document.querySelector('.risk-score[data-task="' + t.task_id + '"]');
+                            if (el) {
+                                var score = report.risk_score || 0;
+                                var level = report.risk_level || 'clean';
+                                el.textContent = score + ' / 100';
+                                el.className = 'risk-score risk-' + level;
+                            }
+                        }
+                    })
+                    .catch(function() {});
+            }
+        });
+    }
+
+    // ============================================================
+    // 文件上传
+    // ============================================================
+
+    var uploadArea = document.getElementById('upload-area');
+    var fileInput = document.getElementById('file-input');
+    var uploadPlaceholder = document.getElementById('upload-placeholder');
+    var uploadProgress = document.getElementById('upload-progress');
+
+    // 点击上传
+    uploadArea.addEventListener('click', function() {
+        fileInput.click();
+    });
+
+    fileInput.addEventListener('change', function() {
+        if (fileInput.files && fileInput.files.length > 0) {
+            uploadFile(fileInput.files[0]);
+        }
+    });
+
+    // 拖拽上传
+    uploadArea.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        uploadArea.classList.add('drag-over');
+    });
+
+    uploadArea.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        uploadArea.classList.remove('drag-over');
+    });
+
+    uploadArea.addEventListener('drop', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        uploadArea.classList.remove('drag-over');
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            uploadFile(e.dataTransfer.files[0]);
+        }
+    });
+
+    /** 上传文件到沙箱 */
+    function uploadFile(file) {
+        // 显示上传进度
+        uploadPlaceholder.style.display = 'none';
+        uploadProgress.style.display = 'block';
+        document.getElementById('upload-filename').textContent = file.name + ' (' + formatSize(file.size) + ')';
+        document.getElementById('progress-fill').style.width = '0%';
+        document.getElementById('upload-status').textContent = '上传中...';
+
+        var formData = new FormData();
+        formData.append('file', file);
+        formData.append('auto_analyze', 'true');
+
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/sandbox/api/submit/file', true);
+
+        xhr.upload.addEventListener('progress', function(e) {
+            if (e.lengthComputable) {
+                var pct = Math.round((e.loaded / e.total) * 100);
+                document.getElementById('progress-fill').style.width = pct + '%';
+                document.getElementById('upload-status').textContent = '上传中... ' + pct + '%';
+            }
+        });
+
+        xhr.addEventListener('load', function() {
+            try {
+                var result = JSON.parse(xhr.responseText);
+                if (result.status === 'ok') {
+                    document.getElementById('progress-fill').style.width = '100%';
+                    document.getElementById('upload-status').textContent = '提交成功! 任务ID: ' + result.task_id;
+                    showToast('文件已提交到分析队列: ' + file.name, 'success');
+                    // 刷新任务列表
+                    setTimeout(loadTasks, 1000);
+                    setTimeout(loadStats, 2000);
+                } else {
+                    showToast('提交失败: ' + (result.message || '未知错误'), 'error');
+                    resetUpload();
+                }
+            } catch (e) {
+                showToast('解析响应失败', 'error');
+                resetUpload();
+            }
+        });
+
+        xhr.addEventListener('error', function() {
+            showToast('上传失败，请检查网络连接', 'error');
+            resetUpload();
+        });
+
+        xhr.addEventListener('timeout', function() {
+            showToast('上传超时', 'error');
+            resetUpload();
+        });
+
+        xhr.timeout = 300000; // 5分钟超时
+        xhr.send(formData);
+    }
+
+    /** 重置上传区域 */
+    function resetUpload() {
+        uploadPlaceholder.style.display = 'block';
+        uploadProgress.style.display = 'none';
+        fileInput.value = '';
+    }
+
+    // 3秒后自动重置上传区域
+    setInterval(function() {
+        if (uploadProgress.style.display !== 'none') {
+            var statusText = document.getElementById('upload-status').textContent;
+            if (statusText.indexOf('提交成功') >= 0 || statusText.indexOf('失败') >= 0) {
+                setTimeout(resetUpload, 2000);
+            }
+        }
+    }, 3000);
+
+    // ============================================================
+    // URL 提交
+    // ============================================================
+
+    document.getElementById('btn-submit-url').addEventListener('click', function() {
+        var urlInput = document.getElementById('url-input');
+        var url = urlInput.value.trim();
+        if (!url) {
+            showToast('请输入要分析的 URL', 'warning');
+            return;
+        }
+
+        fetch('/sandbox/api/submit/url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: url })
+        })
+        .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                showToast('URL 已提交到分析队列', 'success');
+                urlInput.value = '';
+                loadTasks();
+                setTimeout(loadStats, 2000);
+            } else {
+                showToast('提交失败: ' + (data.message || '未知错误'), 'error');
+            }
+        })
+        .catch(function(err) {
+            showToast('提交失败: ' + err.message, 'error');
+        });
+    });
+
+    // 回车提交
+    document.getElementById('url-input').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            document.getElementById('btn-submit-url').click();
+        }
+    });
+
+    // ============================================================
+    // 查看报告
+    // ============================================================
+
+    window.viewReport = function(taskId) {
+        fetch('/sandbox/api/task/' + taskId)
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+                if (data.status === 'ok' && data.data) {
+                    renderReport(data.data);
+                    document.getElementById('report-modal').style.display = 'flex';
+                } else {
+                    showToast('获取报告失败', 'error');
+                }
+            })
+            .catch(function(err) {
+                showToast('获取报告失败: ' + err.message, 'error');
+            });
+    };
+
+    /** 渲染报告内容 */
+    function renderReport(data) {
+        var task = data.task || {};
+        var report = data.report || {};
+        var body = document.getElementById('report-body');
+
+        // 风险评分颜色
+        var score = report.risk_score || 0;
+        var level = report.risk_level || 'clean';
+        var scoreColors = {
+            'clean': { bg: 'rgba(134, 239, 172, 0.1)', color: '#86efac' },
+            'low': { bg: 'rgba(147, 197, 253, 0.1)', color: '#93c5fd' },
+            'medium': { bg: 'rgba(252, 211, 77, 0.1)', color: '#fcd34d' },
+            'high': { bg: 'rgba(251, 146, 60, 0.1)', color: '#fb923c' },
+            'critical': { bg: 'rgba(252, 165, 165, 0.1)', color: '#fca5a5' }
+        };
+        var sc = scoreColors[level] || scoreColors['clean'];
+
+        var html = '';
+
+        // 风险评分区域
+        html += '<div class="report-score" style="background: ' + sc.bg + '; border: 1px solid ' + sc.color + ';">';
+        html += '<div class="score-value" style="color: ' + sc.color + ';">' + score + '</div>';
+        html += '<div class="score-label" style="color: ' + sc.color + ';">' + riskText(level) + '</div>';
+        html += '</div>';
+
+        // 文件信息
+        html += '<div class="report-section"><h4>文件信息</h4>';
+        html += '<div class="report-info-grid">';
+        html += infoItem('文件名', report.target_name || task.target_name);
+        html += infoItem('类型', report.target_type || task.target_type);
+        html += infoItem('大小', formatSize(report.file_size || task.file_size));
+        html += infoItem('MIME', report.file_type || '-');
+        html += infoItem('MD5', report.file_md5 || task.file_md5 || '-');
+        html += infoItem('SHA256', report.file_sha256 || task.file_sha256 || '-');
+        html += infoItem('SHA1', report.file_sha1 || '-');
+        html += infoItem('分析后端', report.backend || task.backend || '-');
+        html += infoItem('分析时长', (report.analysis_duration || 0) + ' 秒');
+        html += infoItem('ClamAV', report.clamav_result === 'infected' ? '<span style="color:#fca5a5">感染: ' + escapeHtml(report.clamav_threat) + '</span>' : (report.clamav_result || '未扫描'));
+        if (report.malware_type) {
+            html += infoItem('恶意软件类型', report.malware_type);
+        }
+        html += '</div></div>';
+
+        // PE 信息
+        if (report.pe_info && Object.keys(report.pe_info).length > 0) {
+            html += '<div class="report-section"><h4>PE 文件信息</h4>';
+            html += '<div class="report-info-grid">';
+            var pe = report.pe_info;
+            if (pe.machine) html += infoItem('架构', pe.machine);
+            if (pe.sections) html += infoItem('节区数', pe.sections);
+            if (pe.timestamp) html += infoItem('编译时间', pe.timestamp);
+            if (pe.is_dll !== undefined) html += infoItem('文件类型', pe.is_dll ? 'DLL' : (pe.is_exe ? 'EXE' : '未知'));
+            if (pe.section_names) html += infoItem('节区', pe.section_names.join(', '));
+            html += '</div></div>';
+        }
+
+        // 行为摘要
+        html += '<div class="report-section"><h4>行为摘要</h4>';
+        html += '<div class="report-summary">' + escapeHtml(report.behavior_summary || '无行为数据') + '</div>';
+        html += '</div>';
+
+        // 网络请求
+        html += '<div class="report-section"><h4>网络行为</h4>';
+        if (report.domains_contacted && report.domains_contacted.length > 0) {
+            html += '<p style="font-size:13px;color:var(--text-muted);margin-bottom:6px;">联系域名 (' + report.domains_contacted.length + ')</p>';
+            html += '<ul class="report-list">';
+            report.domains_contacted.forEach(function(d) { html += '<li class="mono">' + escapeHtml(d) + '</li>'; });
+            html += '</ul>';
+        }
+        if (report.ips_contacted && report.ips_contacted.length > 0) {
+            html += '<p style="font-size:13px;color:var(--text-muted);margin-bottom:6px;margin-top:10px;">联系IP (' + report.ips_contacted.length + ')</p>';
+            html += '<ul class="report-list">';
+            report.ips_contacted.forEach(function(ip) { html += '<li class="mono">' + escapeHtml(ip) + '</li>'; });
+            html += '</ul>';
+        }
+        if (report.http_requests && report.http_requests.length > 0) {
+            html += '<p style="font-size:13px;color:var(--text-muted);margin-bottom:6px;margin-top:10px;">HTTP请求 (' + report.http_requests.length + ')</p>';
+            html += '<ul class="report-list">';
+            report.http_requests.slice(0, 20).forEach(function(h) {
+                var url = typeof h === 'string' ? h : (h.uri || h.url || JSON.stringify(h));
+                html += '<li class="mono">' + escapeHtml(String(url).substring(0, 120)) + '</li>';
+            });
+            if (report.http_requests.length > 20) {
+                html += '<li class="empty-hint">...还有 ' + (report.http_requests.length - 20) + ' 条</li>';
+            }
+            html += '</ul>';
+        }
+        if ((!report.domains_contacted || report.domains_contacted.length === 0) &&
+            (!report.ips_contacted || report.ips_contacted.length === 0) &&
+            (!report.http_requests || report.http_requests.length === 0)) {
+            html += '<p class="empty-hint">未检测到网络行为</p>';
+        }
+        html += '</div>';
+
+        // 文件系统操作
+        html += '<div class="report-section"><h4>文件系统操作</h4>';
+        var hasFs = false;
+        if (report.files_created && report.files_created.length > 0) {
+            html += '<p style="font-size:13px;color:var(--text-muted);margin-bottom:6px;">创建文件 (' + report.files_created.length + ')</p>';
+            html += '<ul class="report-list">';
+            report.files_created.slice(0, 15).forEach(function(f) { html += '<li class="mono">' + escapeHtml(String(f)) + '</li>'; });
+            html += '</ul>';
+            hasFs = true;
+        }
+        if (report.files_deleted && report.files_deleted.length > 0) {
+            html += '<p style="font-size:13px;color:var(--text-muted);margin-bottom:6px;margin-top:10px;">删除文件 (' + report.files_deleted.length + ')</p>';
+            html += '<ul class="report-list">';
+            report.files_deleted.slice(0, 15).forEach(function(f) { html += '<li class="mono">' + escapeHtml(String(f)) + '</li>'; });
+            html += '</ul>';
+            hasFs = true;
+        }
+        if (report.dropped_files && report.dropped_files.length > 0) {
+            html += '<p style="font-size:13px;color:var(--text-muted);margin-bottom:6px;margin-top:10px;">释放文件 (' + report.dropped_files.length + ')</p>';
+            html += '<ul class="report-list">';
+            report.dropped_files.slice(0, 15).forEach(function(f) {
+                var name = typeof f === 'string' ? f : (f.path || f.name || JSON.stringify(f));
+                html += '<li class="mono">' + escapeHtml(String(name)) + '</li>';
+            });
+            html += '</ul>';
+            hasFs = true;
+        }
+        if (!hasFs) {
+            html += '<p class="empty-hint">未检测到文件系统操作</p>';
+        }
+        html += '</div>';
+
+        // 注册表操作
+        html += '<div class="report-section"><h4>注册表操作</h4>';
+        var regSet = report.registry_keys_set || [];
+        var regDel = report.registry_keys_deleted || [];
+        if (regSet.length > 0 || regDel.length > 0) {
+            if (regSet.length > 0) {
+                html += '<p style="font-size:13px;color:var(--text-muted);margin-bottom:6px;">设置注册表键 (' + regSet.length + ')</p>';
+                html += '<ul class="report-list">';
+                regSet.slice(0, 15).forEach(function(r) {
+                    var key = typeof r === 'string' ? r : (r.key || JSON.stringify(r));
+                    html += '<li class="mono">' + escapeHtml(String(key)) + '</li>';
+                });
+                html += '</ul>';
+            }
+            if (regDel.length > 0) {
+                html += '<p style="font-size:13px;color:var(--text-muted);margin-bottom:6px;margin-top:10px;">删除注册表键 (' + regDel.length + ')</p>';
+                html += '<ul class="report-list">';
+                regDel.slice(0, 15).forEach(function(r) {
+                    var key = typeof r === 'string' ? r : (r.key || JSON.stringify(r));
+                    html += '<li class="mono">' + escapeHtml(String(key)) + '</li>';
+                });
+                html += '</ul>';
+            }
+        } else {
+            html += '<p class="empty-hint">未检测到注册表操作</p>';
+        }
+        html += '</div>';
+
+        // IOC 指标
+        html += '<div class="report-section"><h4>IOC 威胁指标</h4>';
+        var hasIoc = false;
+        if (report.ioc_ips && report.ioc_ips.length > 0) {
+            html += '<p style="font-size:13px;color:var(--text-muted);margin-bottom:6px;">恶意IP (' + report.ioc_ips.length + ')</p>';
+            html += '<ul class="report-list">';
+            report.ioc_ips.forEach(function(ip) { html += '<li class="mono" style="color:#fca5a5;">' + escapeHtml(ip) + '</li>'; });
+            html += '</ul>';
+            hasIoc = true;
+        }
+        if (report.ioc_domains && report.ioc_domains.length > 0) {
+            html += '<p style="font-size:13px;color:var(--text-muted);margin-bottom:6px;margin-top:10px;">恶意域名 (' + report.ioc_domains.length + ')</p>';
+            html += '<ul class="report-list">';
+            report.ioc_domains.forEach(function(d) { html += '<li class="mono" style="color:#fca5a5;">' + escapeHtml(d) + '</li>'; });
+            html += '</ul>';
+            hasIoc = true;
+        }
+        if (report.ioc_urls && report.ioc_urls.length > 0) {
+            html += '<p style="font-size:13px;color:var(--text-muted);margin-bottom:6px;margin-top:10px;">恶意URL (' + report.ioc_urls.length + ')</p>';
+            html += '<ul class="report-list">';
+            report.ioc_urls.forEach(function(u) { html += '<li class="mono" style="color:#fca5a5;">' + escapeHtml(u) + '</li>'; });
+            html += '</ul>';
+            hasIoc = true;
+        }
+        if (!hasIoc) {
+            html += '<p class="empty-hint">未发现 IOC 指标</p>';
+        }
+        html += '</div>';
+
+        // 行为签名
+        html += '<div class="report-section"><h4>行为签名</h4>';
+        if (report.signatures && report.signatures.length > 0) {
+            html += '<ul class="report-list">';
+            report.signatures.forEach(function(sig) {
+                var name = typeof sig === 'string' ? sig : (sig.name || '未知');
+                var desc = typeof sig === 'object' ? (sig.description || '') : '';
+                var severity = typeof sig === 'object' ? (sig.severity || 1) : 1;
+                var sevClass = severity >= 5 ? 'severity-critical' : (severity >= 4 ? 'severity-high' : (severity >= 3 ? 'severity-medium' : 'severity-low'));
+                html += '<li>';
+                html += '<strong>' + escapeHtml(name) + '</strong>';
+                html += '<span class="severity ' + sevClass + '">S' + severity + '</span>';
+                if (desc) html += '<br><span style="color:var(--text-muted);font-size:12px;">' + escapeHtml(desc) + '</span>';
+                html += '</li>';
+            });
+            html += '</ul>';
+        } else {
+            html += '<p class="empty-hint">未触发行为签名</p>';
+        }
+        html += '</div>';
+
+        body.innerHTML = html;
+    }
+
+    /** 生成报告信息项 HTML */
+    function infoItem(label, value) {
+        return '<div class="report-info-item"><span class="label">' + escapeHtml(label) + ':</span><span class="value">' + value + '</span></div>';
+    }
+
+    // ============================================================
+    // 删除任务
+    // ============================================================
+
+    window.deleteTask = function(taskId) {
+        if (!confirm('确定要删除任务 "' + taskId + '" 吗？')) return;
+
+        fetch('/sandbox/api/task/' + taskId, {
+            method: 'DELETE'
+        })
+        .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                showToast('任务已删除', 'success');
+                loadTasks();
+                loadStats();
+            } else {
+                showToast('删除失败: ' + (data.message || '未知错误'), 'error');
+            }
+        })
+        .catch(function(err) {
+            showToast('删除失败: ' + err.message, 'error');
+        });
+    };
+
+    // ============================================================
+    // 模态框控制
+    // ============================================================
+
+    document.getElementById('modal-close').addEventListener('click', function() {
+        document.getElementById('report-modal').style.display = 'none';
+    });
+
+    document.getElementById('report-modal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            this.style.display = 'none';
+        }
+    });
+
+    // ESC 关闭模态框
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            document.getElementById('report-modal').style.display = 'none';
+        }
+    });
+
+    // ============================================================
+    // 配置管理
+    // ============================================================
+
+    function loadConfig() {
+        fetch('/sandbox/api/config')
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+                if (data.status === 'ok') {
+                    var c = data.data;
+                    document.getElementById('cfg-cuckoo-url').value = c.cuckoo_api_url || '';
+                    document.getElementById('cfg-timeout').value = c.analysis_timeout || 300;
+                    document.getElementById('cfg-concurrent').value = c.max_concurrent_tasks || 5;
+                    document.getElementById('cfg-auto-analyze').value = c.auto_start_analysis !== false ? 'true' : 'false';
+                    document.getElementById('cfg-clamav').value = c.clamav_enabled !== false ? 'true' : 'false';
+                    document.getElementById('cfg-local-mode').value = c.local_mode === true ? 'true' : 'false';
+                }
+            })
+            .catch(function(err) {
+                console.error('加载配置失败:', err);
+            });
+    }
+
+    document.getElementById('btn-save-config').addEventListener('click', function() {
+        var config = {
+            cuckoo_api_url: document.getElementById('cfg-cuckoo-url').value.trim(),
+            analysis_timeout: parseInt(document.getElementById('cfg-timeout').value) || 300,
+            max_concurrent_tasks: parseInt(document.getElementById('cfg-concurrent').value) || 5,
+            auto_start_analysis: document.getElementById('cfg-auto-analyze').value === 'true',
+            clamav_enabled: document.getElementById('cfg-clamav').value === 'true',
+            local_mode: document.getElementById('cfg-local-mode').value === 'true'
+        };
+
+        fetch('/sandbox/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        })
+        .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                showToast('配置已保存', 'success');
+            } else {
+                showToast('保存失败: ' + (data.message || '未知错误'), 'error');
+            }
+        })
+        .catch(function(err) {
+            showToast('保存失败: ' + err.message, 'error');
+        });
+    });
+
+    // ============================================================
+    // 刷新按钮
+    // ============================================================
+
+    document.getElementById('btn-refresh-tasks').addEventListener('click', function() {
+        loadTasks();
+        loadStats();
+    });
+
+    // ============================================================
+    // 初始化
+    // ============================================================
+
+    loadStats();
+    loadTasks();
+    loadConfig();
+
+    // 定时刷新
+    setInterval(loadStats, 15000);
+    setInterval(loadTasks, 10000);
+
+})();
+{% endblock %}

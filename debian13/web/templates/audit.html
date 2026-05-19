@@ -1,0 +1,341 @@
+{% extends "base.html" %}
+
+{% block title %}日志管理{% endblock %}
+
+{% block content %}
+<!-- 统计概览 -->
+<div class="section">
+    <h2 style="color: var(--primary); margin-bottom: 15px; font-size: 18px;">统计概览（近7天）</h2>
+    <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px;">
+        <div class="stat-card" style="text-align: center;">
+            <h3 style="color: var(--text-muted); font-size: 12px; margin-bottom: 8px;">总操作数</h3>
+            <div class="value" id="stat-total" style="font-size: 20px; font-weight: bold; color: var(--primary);">-</div>
+        </div>
+        <div class="stat-card" style="text-align: center;">
+            <h3 style="color: var(--text-muted); font-size: 12px; margin-bottom: 8px;">失败操作</h3>
+            <div class="value" id="stat-failures" style="font-size: 20px; font-weight: bold; color: #fca5a5;">-</div>
+        </div>
+        <div class="stat-card" style="text-align: center;">
+            <h3 style="color: var(--text-muted); font-size: 12px; margin-bottom: 8px;">Web操作</h3>
+            <div class="value" id="stat-web" style="font-size: 20px; font-weight: bold; color: var(--primary);">-</div>
+        </div>
+        <div class="stat-card" style="text-align: center;">
+            <h3 style="color: var(--text-muted); font-size: 12px; margin-bottom: 8px;">CLI操作</h3>
+            <div class="value" id="stat-cli" style="font-size: 20px; font-weight: bold; color: var(--primary);">-</div>
+        </div>
+        <div class="stat-card" style="text-align: center;">
+            <h3 style="color: var(--text-muted); font-size: 12px; margin-bottom: 8px;">活跃用户</h3>
+            <div class="value" id="stat-users" style="font-size: 20px; font-weight: bold; color: var(--primary);">-</div>
+        </div>
+    </div>
+</div>
+
+<!-- 筛选 -->
+<div class="section">
+    <h2 style="color: var(--primary); margin-bottom: 15px; font-size: 18px;">日志查询</h2>
+    <div class="filter-row">
+        <div class="filter-group">
+            <label>来源</label>
+            <select id="f-source">
+                <option value="">全部</option>
+                <option value="web">Web</option>
+                <option value="cli">CLI</option>
+                <option value="system">系统</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>用户</label>
+            <select id="f-username">
+                <option value="">全部用户</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>模块</label>
+            <select id="f-module">
+                <option value="">全部</option>
+                <option value="auth">认证</option>
+                <option value="gateway">网关</option>
+                <option value="firewall">防火墙</option>
+                <option value="ids">入侵检测</option>
+                <option value="network">网络</option>
+                <option value="settings">设置</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>结果</label>
+            <select id="f-result">
+                <option value="">全部</option>
+                <option value="success">成功</option>
+                <option value="failure">失败</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>关键词</label>
+            <input type="text" id="f-keyword" placeholder="搜索内容">
+        </div>
+        <div class="filter-group">
+            <label>开始时间</label>
+            <input type="datetime-local" id="f-start">
+        </div>
+        <div class="filter-group">
+            <label>结束时间</label>
+            <input type="datetime-local" id="f-end">
+        </div>
+        <div class="filter-group">
+            <label>快捷选择</label>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <button class="btn btn-sm date-shortcut" onclick="setTimeRange(1)">今天</button>
+                <button class="btn btn-sm date-shortcut" onclick="setTimeRange(3)">近3天</button>
+                <button class="btn btn-sm date-shortcut" onclick="setTimeRange(7)">近7天</button>
+                <button class="btn btn-sm date-shortcut" onclick="setTimeRange(30)">近30天</button>
+            </div>
+        </div>
+        <div class="filter-group" style="justify-content: flex-end;">
+            <button class="btn btn-primary" onclick="searchLogs()">查询</button>
+            <button class="btn btn-success" onclick="exportCsv()">导出CSV</button>
+        </div>
+    </div>
+</div>
+
+<!-- 日志列表 -->
+<div class="section">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>时间</th>
+                    <th>来源</th>
+                    <th>用户</th>
+                    <th>操作</th>
+                    <th>模块</th>
+                    <th>详情</th>
+                    <th>客户端IP</th>
+                    <th>结果</th>
+                </tr>
+            </thead>
+            <tbody id="log-table">
+                <tr><td colspan="8" class="empty-state">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pagination" id="pagination">
+        <button onclick="prevPage()" id="btn-prev">上一页</button>
+        <span id="page-info">第 1 页</span>
+        <button onclick="nextPage()" id="btn-next">下一页</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 日志管理页面专用样式 */
+    .filter-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 15px;
+        align-items: flex-end;
+    }
+    .filter-group { display: flex; flex-direction: column; }
+    .filter-group label { color: var(--text-muted); font-size: 12px; margin-bottom: 4px; }
+    .filter-group input, .filter-group select {
+        padding: 8px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-size: 13px;
+        min-width: 120px;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; }
+    th { color: var(--text-muted); font-weight: 600; position: sticky; top: 0; background: var(--bg-card); }
+    tr:hover { background: var(--bg-secondary); }
+    .badge-success { background: rgba(34,197,94,0.15); color: #4ade80; }
+    .badge-failure { background: rgba(220,38,38,0.15); color: #f87171; }
+    .badge-web { background: rgba(59,130,246,0.15); color: #60a5fa; }
+    .badge-cli { background: rgba(168,85,247,0.15); color: #c084fc; }
+    .badge-system { background: rgba(148,163,184,0.15); color: #94a3b8; }
+    .pagination button {
+        padding: 6px 12px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        cursor: pointer;
+    }
+    .pagination button:hover { background: var(--border); }
+    .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .pagination span { color: var(--text-muted); font-size: 13px; }
+    .table-wrap { max-height: 600px; overflow-y: auto; }
+    .empty-state { text-align: center; padding: 40px; color: var(--text-muted); }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// 时间快捷选择
+    function formatDateTime(d) {
+        var y = d.getFullYear();
+        var m = String(d.getMonth() + 1).padStart(2, '0');
+        var day = String(d.getDate()).padStart(2, '0');
+        var h = String(d.getHours()).padStart(2, '0');
+        var min = String(d.getMinutes()).padStart(2, '0');
+        return y + '-' + m + '-' + day + 'T' + h + ':' + min;
+    }
+
+    function setTimeRange(days) {
+        var end = new Date();
+        var start = new Date();
+        start.setDate(start.getDate() - days + 1);
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 0, 0);
+        document.getElementById('f-start').value = formatDateTime(start);
+        document.getElementById('f-end').value = formatDateTime(end);
+    }
+
+    // 初始化默认时间为今天
+    (function() { setTimeRange(1); })();
+
+    let currentPage = 1;
+    const pageSize = 50;
+
+    function loadStats() {
+        fetch('/audit/api/statistics?days=7')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const d = data.data;
+                    document.getElementById('stat-total').textContent = d.total;
+                    document.getElementById('stat-failures').textContent = d.failures;
+                    document.getElementById('stat-web').textContent = d.source_stats.web || 0;
+                    document.getElementById('stat-cli').textContent = d.source_stats.cli || 0;
+                    document.getElementById('stat-users').textContent = Object.keys(d.user_stats).length;
+                }
+            });
+    }
+
+    function getParams() {
+        const params = new URLSearchParams();
+        params.set('page', currentPage);
+        params.set('page_size', pageSize);
+
+        const source = document.getElementById('f-source').value;
+        const username = document.getElementById('f-username').value;
+        const module = document.getElementById('f-module').value;
+        const result = document.getElementById('f-result').value;
+        const keyword = document.getElementById('f-keyword').value;
+        const start = document.getElementById('f-start').value;
+        const end = document.getElementById('f-end').value;
+
+        if (source) params.set('source', source);
+        if (username) params.set('username', username);
+        if (module) params.set('module', module);
+        if (result) params.set('result', result);
+        if (keyword) params.set('keyword', keyword);
+        if (start) params.set('start_time', start.replace(' ', 'T') + ':00');
+        if (end) params.set('end_time', end.replace(' ', 'T') + ':00');
+
+        return params;
+    }
+
+    function searchLogs() {
+        currentPage = 1;
+        loadLogs();
+    }
+
+    function loadLogs() {
+        fetch('/audit/api/logs?' + getParams())
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    const d = data.data;
+                    const tbody = document.getElementById('log-table');
+
+                    if (d.records.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">暂无日志记录</td></tr>';
+                    } else {
+                        tbody.innerHTML = d.records.map(r => {
+                            const srcBadge = `<span class="badge badge-${r.source}">${r.source.toUpperCase()}</span>`;
+                            const resBadge = `<span class="badge badge-${r.result}">${r.result === 'success' ? '成功' : '失败'}</span>`;
+                            const time = r.timestamp ? new Date(r.timestamp).toLocaleString() : '-';
+                            const detail = r.detail ? (r.detail.length > 60 ? r.detail.substring(0, 60) + '...' : r.detail) : '-';
+                            return `<tr>
+                                <td style="white-space:nowrap;">${time}</td>
+                                <td>${srcBadge}</td>
+                                <td>${r.username || '-'}</td>
+                                <td>${r.action}</td>
+                                <td>${r.module || '-'}</td>
+                                <td title="${r.detail || ''}">${detail}</td>
+                                <td>${r.client_ip || '-'}</td>
+                                <td>${resBadge}</td>
+                            </tr>`;
+                        }).join('');
+                    }
+
+                    // 分页
+                    document.getElementById('page-info').textContent =
+                        `第 ${d.page} / ${d.total_pages} 页 (共 ${d.total} 条)`;
+                    document.getElementById('btn-prev').disabled = d.page <= 1;
+                    document.getElementById('btn-next').disabled = d.page >= d.total_pages;
+                }
+            });
+    }
+
+    function prevPage() {
+        if (currentPage > 1) { currentPage--; loadLogs(); }
+    }
+
+    function nextPage() {
+        currentPage++;
+        loadLogs();
+    }
+
+    function exportCsv() {
+        const params = getParams();
+        params.delete('page');
+        params.delete('page_size');
+        window.open('/audit/api/export/csv?' + params, '_blank');
+    }
+
+    function loadAuditUsers() {
+        fetch('/audit/api/users')
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+                if (data.status === 'ok' && Array.isArray(data.data)) {
+                    var sel = document.getElementById('f-username');
+                    data.data.forEach(function(u) {
+                        var opt = document.createElement('option');
+                        opt.value = u;
+                        opt.textContent = u;
+                        sel.appendChild(opt);
+                    });
+                }
+            })
+            .catch(function() {});
+    }
+
+    function initPage() {
+        loadAuditUsers();
+        loadStats();
+        loadLogs();
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initPage);
+    } else {
+        initPage();
+    }
+    document.addEventListener('pjax:contentloaded', initPage);
+</script>
+{% endblock %}

@@ -1,0 +1,56 @@
+[run]
+source =
+    core
+    security
+    network
+    alerting
+    reports
+    cli
+    config
+    web
+    ai_engine
+omit =
+    tests/*
+    */tests/*
+    iso_build/*
+    node_modules/*
+    setup.py
+    sanitize.py
+    generate-report.js
+    scripts/*
+    build/*
+    data/*
+    logs/*
+    __pycache__/*
+    */__pycache__/*
+    .eggs/*
+    *.egg-info/*
+
+[report]
+# 排除不需要覆盖率报告的行
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    def __str__
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    @abstractmethod
+    @abc.abstractmethod
+    pass
+    except ImportError
+
+# 精度
+precision = 2
+
+# 显示缺失的行
+show_missing = True
+
+# 跳过空文件
+skip_empty = True
+
+[html]
+directory = htmlcov
+
+[xml]
+output = coverage.xml

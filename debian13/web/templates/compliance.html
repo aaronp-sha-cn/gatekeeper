@@ -1,0 +1,1499 @@
+{% extends "base.html" %}
+
+{% block title %}合规检查{% endblock %}
+
+{% block content %}
+<!-- 合规分数仪表盘 -->
+<div class="compliance-dashboard">
+    <div class="score-gauge" id="score-gauge">
+        <div class="score-circle" id="score-circle">
+            <div class="score-number" id="score-number">--</div>
+            <div class="score-label">合规分数</div>
+        </div>
+        <div class="score-status" id="score-status">尚未执行检查</div>
+    </div>
+
+    <!-- 统计概览 -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3>总检查项</h3>
+            <div class="value" id="stat-total">--</div>
+        </div>
+        <div class="stat-card pass">
+            <h3>通过</h3>
+            <div class="value" id="stat-passed">--</div>
+        </div>
+        <div class="stat-card fail">
+            <h3>失败</h3>
+            <div class="value" id="stat-failed">--</div>
+        </div>
+        <div class="stat-card warning">
+            <h3>警告</h3>
+            <div class="value" id="stat-warnings">--</div>
+        </div>
+    </div>
+</div>
+
+<!-- 检查控制 -->
+<div class="section">
+    <h2>合规检查</h2>
+    <div class="check-control">
+        <div class="check-form-row">
+            <div class="form-group">
+                <label>检查类型</label>
+                <select id="check-type" onchange="onCheckTypeChange()">
+                    <option value="local">本机检查</option>
+                    <option value="network">网络设备检查</option>
+                    <option value="both">全面检查（本机+网络设备）</option>
+                </select>
+            </div>
+            <div class="form-group" id="standard-group">
+                <label>检查标准</label>
+                <select id="check-standard">
+                    <option value="cis">CIS Benchmark</option>
+                    <option value="djcp">等保2.0</option>
+                </select>
+            </div>
+            <div class="form-group" id="category-group">
+                <label>检查范围</label>
+                <select id="check-category">
+                    <option value="">全部类别</option>
+                    <option value="系统安全">系统安全</option>
+                    <option value="网络安全">网络安全</option>
+                    <option value="用户管理">用户管理</option>
+                    <option value="日志审计">日志审计</option>
+                    <option value="数据保护">数据保护</option>
+                    <option value="服务安全">服务安全</option>
+                </select>
+            </div>
+        </div>
+        <div class="check-actions">
+            <button class="btn btn-primary" id="btn-run-check" onclick="runCheck()">
+                开始检查
+            </button>
+            <button class="btn btn-secondary" id="btn-export" onclick="showExportDialog()" style="display: none;">
+                导出报告
+            </button>
+        </div>
+    </div>
+
+    <!-- 检查进度 -->
+    <div class="check-progress" id="check-progress" style="display: none;">
+        <div class="progress-info">
+            <span id="progress-status">检查中，请稍候...</span>
+        </div>
+        <div class="progress-bar">
+            <div class="progress-fill checking" id="progress-fill"></div>
+        </div>
+    </div>
+</div>
+
+<!-- 网络设备管理 -->
+<div class="section" id="device-section">
+    <h2>&#128268; 网络设备管理</h2>
+    <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 15px;">
+        添加需要检查的网络设备（交换机、路由器、防火墙等），通过SSH连接进行安全基线检查。
+        支持 Cisco、华为、H3C、Juniper 等主流厂商。
+    </p>
+
+    <!-- 添加设备表单 -->
+    <div class="device-form">
+        <div class="check-form-row">
+            <div class="form-group">
+                <label>设备别名</label>
+                <input type="text" id="dev-alias" placeholder="如：核心交换机-01" class="form-input">
+            </div>
+            <div class="form-group">
+                <label>设备地址 <span style="color:#ef4444;">*</span></label>
+                <input type="text" id="dev-host" placeholder="IP地址或域名" class="form-input">
+            </div>
+            <div class="form-group">
+                <label>SSH端口</label>
+                <input type="number" id="dev-port" value="22" class="form-input">
+            </div>
+        </div>
+        <div class="check-form-row">
+            <div class="form-group">
+                <label>用户名 <span style="color:#ef4444;">*</span></label>
+                <input type="text" id="dev-username" placeholder="SSH登录用户名" class="form-input">
+            </div>
+            <div class="form-group">
+                <label>密码 <span style="color:#ef4444;">*</span></label>
+                <input type="password" id="dev-password" placeholder="SSH登录密码" class="form-input">
+            </div>
+            <div class="form-group">
+                <label>设备厂商</label>
+                <select id="dev-vendor" class="form-input">
+                    <option value="cisco">Cisco (IOS/IOS-XE)</option>
+                    <option value="huawei">华为 (VRP)</option>
+                    <option value="h3c">H3C (Comware)</option>
+                    <option value="juniper">Juniper (Junos)</option>
+                </select>
+            </div>
+        </div>
+        <div class="check-actions">
+            <button class="btn btn-primary" onclick="addDevice()">添加设备</button>
+            <button class="btn btn-secondary" onclick="testDevice()">测试连接</button>
+        </div>
+    </div>
+
+    <!-- 设备列表 -->
+    <div class="device-list-header" style="margin-top: 20px;">
+        <h3 style="color: var(--text); font-size: 15px; margin-bottom: 10px;">
+            已添加设备 (<span id="device-count">0</span>)
+        </h3>
+    </div>
+    <div class="device-list" id="device-list">
+        <p style="color: var(--text-muted); text-align: center; padding: 20px;">暂未添加网络设备</p>
+    </div>
+</div>
+
+<!-- 分类检查结果卡片 -->
+<div class="category-grid" id="category-grid">
+    <div class="category-card" onclick="filterByCategory('系统安全')">
+        <div class="category-icon">&#128274;</div>
+        <h3>系统安全</h3>
+        <div class="category-stats">
+            <span class="pass-count" id="cat-pass-系统安全">-</span> /
+            <span class="fail-count" id="cat-fail-系统安全">-</span> /
+            <span class="warn-count" id="cat-warn-系统安全">-</span>
+        </div>
+        <div class="category-label">通过 / 失败 / 警告</div>
+    </div>
+    <div class="category-card" onclick="filterByCategory('网络安全')">
+        <div class="category-icon">&#127760;</div>
+        <h3>网络安全</h3>
+        <div class="category-stats">
+            <span class="pass-count" id="cat-pass-网络安全">-</span> /
+            <span class="fail-count" id="cat-fail-网络安全">-</span> /
+            <span class="warn-count" id="cat-warn-网络安全">-</span>
+        </div>
+        <div class="category-label">通过 / 失败 / 警告</div>
+    </div>
+    <div class="category-card" onclick="filterByCategory('用户管理')">
+        <div class="category-icon">&#128100;</div>
+        <h3>用户管理</h3>
+        <div class="category-stats">
+            <span class="pass-count" id="cat-pass-用户管理">-</span> /
+            <span class="fail-count" id="cat-fail-用户管理">-</span> /
+            <span class="warn-count" id="cat-warn-用户管理">-</span>
+        </div>
+        <div class="category-label">通过 / 失败 / 警告</div>
+    </div>
+    <div class="category-card" onclick="filterByCategory('日志审计')">
+        <div class="category-icon">&#128221;</div>
+        <h3>日志审计</h3>
+        <div class="category-stats">
+            <span class="pass-count" id="cat-pass-日志审计">-</span> /
+            <span class="fail-count" id="cat-fail-日志审计">-</span> /
+            <span class="warn-count" id="cat-warn-日志审计">-</span>
+        </div>
+        <div class="category-label">通过 / 失败 / 警告</div>
+    </div>
+    <div class="category-card" onclick="filterByCategory('数据保护')">
+        <div class="category-icon">&#128171;</div>
+        <h3>数据保护</h3>
+        <div class="category-stats">
+            <span class="pass-count" id="cat-pass-数据保护">-</span> /
+            <span class="fail-count" id="cat-fail-数据保护">-</span> /
+            <span class="warn-count" id="cat-warn-数据保护">-</span>
+        </div>
+        <div class="category-label">通过 / 失败 / 警告</div>
+    </div>
+    <div class="category-card" onclick="filterByCategory('服务安全')">
+        <div class="category-icon">&#9881;</div>
+        <h3>服务安全</h3>
+        <div class="category-stats">
+            <span class="pass-count" id="cat-pass-服务安全">-</span> /
+            <span class="fail-count" id="cat-fail-服务安全">-</span> /
+            <span class="warn-count" id="cat-warn-服务安全">-</span>
+        </div>
+        <div class="category-label">通过 / 失败 / 警告</div>
+    </div>
+</div>
+
+<!-- 检查项详细列表 -->
+<div class="section">
+    <div class="section-header">
+        <h2>检查项详情</h2>
+        <div class="detail-filters">
+            <select id="filter-category" onchange="loadChecks()">
+                <option value="">全部分类</option>
+                <option value="系统安全">系统安全</option>
+                <option value="网络安全">网络安全</option>
+                <option value="用户管理">用户管理</option>
+                <option value="日志审计">日志审计</option>
+                <option value="数据保护">数据保护</option>
+                <option value="服务安全">服务安全</option>
+            </select>
+            <select id="filter-status" onchange="loadChecks()">
+                <option value="">全部状态</option>
+                <option value="pass">通过</option>
+                <option value="fail">失败</option>
+                <option value="warning">警告</option>
+                <option value="not_checked">未检查</option>
+            </select>
+            <button class="btn btn-sm btn-secondary" onclick="clearFilters()" style="margin-left: 5px;">清除筛选</button>
+        </div>
+    </div>
+    <div class="checks-table-wrapper">
+        <table class="checks-table">
+            <thead>
+                <tr>
+                    <th>分类</th>
+                    <th>名称</th>
+                    <th>描述</th>
+                    <th>严重度</th>
+                    <th>状态</th>
+                    <th>详情</th>
+                    <th>修复建议</th>
+                </tr>
+            </thead>
+            <tbody id="checks-tbody">
+                <tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 40px;">
+                    请先执行合规检查
+                </td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 历史报告列表 -->
+<div class="section">
+    <h2>历史报告</h2>
+    <div class="reports-list" id="reports-list">
+        <p style="color: var(--text-muted);">暂无历史报告</p>
+    </div>
+</div>
+
+<!-- 导出对话框 -->
+<div class="modal-overlay" id="export-modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>导出报告</h3>
+            <button class="modal-close" onclick="closeExportDialog()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="export-options">
+                <button class="btn btn-primary" onclick="exportReport('json')">
+                    导出 JSON
+                </button>
+                <button class="btn btn-primary" onclick="exportReport('csv')">
+                    导出 CSV
+                </button>
+                <button class="btn btn-primary" onclick="exportReport('html')">
+                    导出 HTML
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 仪表盘 */
+    .compliance-dashboard {
+        display: flex;
+        align-items: center;
+        gap: 40px;
+        margin-bottom: 25px;
+        flex-wrap: wrap;
+    }
+
+    .score-gauge {
+        text-align: center;
+        min-width: 200px;
+    }
+
+    .score-circle {
+        width: 160px;
+        height: 160px;
+        border-radius: 50%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 10px;
+        border: 4px solid var(--border);
+        transition: border-color 0.5s ease;
+    }
+
+    .score-circle.score-green { border-color: #22c55e; box-shadow: 0 0 20px rgba(34,197,94,0.2); }
+    .score-circle.score-yellow { border-color: #eab308; box-shadow: 0 0 20px rgba(234,179,8,0.2); }
+    .score-circle.score-orange { border-color: #f97316; box-shadow: 0 0 20px rgba(249,115,22,0.2); }
+    .score-circle.score-red { border-color: #ef4444; box-shadow: 0 0 20px rgba(239,68,68,0.2); }
+
+    .score-number {
+        font-size: 48px;
+        font-weight: bold;
+        color: var(--text);
+        line-height: 1;
+    }
+
+    .score-label {
+        font-size: 13px;
+        color: var(--text-muted);
+        margin-top: 5px;
+    }
+
+    .score-status {
+        font-size: 14px;
+        color: var(--text-muted);
+    }
+
+    /* 统计卡片 */
+    .stats-grid {
+        display: flex;
+        gap: 15px;
+        flex: 1;
+        flex-wrap: wrap;
+    }
+
+    .stat-card {
+        flex: 1;
+        min-width: 120px;
+    }
+
+    .stat-card .value {
+        font-size: 28px;
+        font-weight: bold;
+        color: #60a5fa;
+    }
+
+    .stat-card.pass .value { color: #22c55e; }
+    .stat-card.fail .value { color: #ef4444; }
+    .stat-card.warning .value { color: #f59e0b; }
+
+    /* 检查控制 */
+    .check-form-row {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 15px;
+        flex-wrap: wrap;
+    }
+
+    .check-form-row .form-group {
+        flex: 1;
+        min-width: 200px;
+    }
+
+    .check-form-row label {
+        display: block;
+        color: var(--text-muted);
+        font-size: 13px;
+        margin-bottom: 5px;
+    }
+
+    .check-form-row select {
+        width: 100%;
+        padding: 8px 12px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-size: 14px;
+    }
+
+    .check-actions {
+        display: flex;
+        gap: 10px;
+    }
+
+    /* 进度条 */
+    .check-progress {
+        margin-top: 15px;
+    }
+
+    .progress-info {
+        margin-bottom: 5px;
+        font-size: 13px;
+        color: var(--text-muted);
+    }
+
+    .progress-bar {
+        width: 100%;
+        height: 6px;
+        background: var(--border);
+        border-radius: 3px;
+        overflow: hidden;
+    }
+
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #2563eb, #60a5fa);
+        border-radius: 3px;
+        transition: width 0.3s ease;
+    }
+
+    .progress-fill.checking {
+        width: 100%;
+        animation: progress-indeterminate 1.5s infinite linear;
+        background: linear-gradient(90deg, transparent, #60a5fa, transparent);
+    }
+
+    @keyframes progress-indeterminate {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(100%); }
+    }
+
+    /* 分类卡片 */
+    .category-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 15px;
+        margin-bottom: 25px;
+    }
+
+    .category-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+        text-align: center;
+        cursor: pointer;
+        transition: border-color 0.2s ease, transform 0.2s ease;
+    }
+
+    .category-card:hover {
+        border-color: var(--primary);
+        transform: translateY(-2px);
+    }
+
+    .category-icon {
+        font-size: 28px;
+        margin-bottom: 8px;
+    }
+
+    .category-card h3 {
+        color: var(--text);
+        font-size: 15px;
+        margin-bottom: 8px;
+    }
+
+    .category-stats {
+        font-size: 20px;
+        font-weight: bold;
+        margin-bottom: 4px;
+    }
+
+    .pass-count { color: #22c55e; }
+    .fail-count { color: #ef4444; }
+    .warn-count { color: #f59e0b; }
+
+    .category-label {
+        font-size: 11px;
+        color: var(--text-muted);
+    }
+
+    /* 检查项表格 */
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .section-header h2 {
+        color: var(--primary);
+        margin: 0;
+    }
+
+    .detail-filters {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .detail-filters select {
+        padding: 6px 10px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-size: 13px;
+    }
+
+    .checks-table-wrapper {
+        max-height: 600px;
+        overflow-y: auto;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+    }
+
+    .checks-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .checks-table th,
+    .checks-table td {
+        padding: 10px 12px;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+        font-size: 13px;
+    }
+
+    .checks-table th {
+        color: var(--text-muted);
+        font-weight: 600;
+        position: sticky;
+        top: 0;
+        background: var(--bg-card);
+        z-index: 1;
+    }
+
+    .checks-table tr:hover {
+        background: rgba(37, 99, 235, 0.05);
+    }
+
+    /* 状态标签 */
+    .status-pass {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-size: 12px;
+        font-weight: 600;
+        background: rgba(34,197,94,0.15);
+        color: #22c55e;
+    }
+
+    .status-fail {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-size: 12px;
+        font-weight: 600;
+        background: rgba(239,68,68,0.15);
+        color: #ef4444;
+    }
+
+    .status-warning {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-size: 12px;
+        font-weight: 600;
+        background: rgba(245,158,11,0.15);
+        color: #f59e0b;
+    }
+
+    .status-not_checked {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-size: 12px;
+        font-weight: 600;
+        background: rgba(148,163,184,0.15);
+        color: #94a3b8;
+    }
+
+    /* 严重度标签 */
+    .sev-critical { color: #ef4444; font-weight: bold; }
+    .sev-high { color: #f97316; font-weight: bold; }
+    .sev-medium { color: #eab308; }
+    .sev-low { color: #22c55e; }
+    .sev-info { color: #60a5fa; }
+
+    /* 详情和修复建议列 */
+    .detail-cell {
+        max-width: 250px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .detail-cell:hover {
+        white-space: normal;
+        word-break: break-all;
+    }
+
+    /* 报告列表 */
+    .reports-list {
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+    .report-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 15px;
+        border-bottom: 1px solid var(--border);
+        transition: background 0.2s ease;
+    }
+
+    .report-item:hover {
+        background: rgba(37, 99, 235, 0.05);
+    }
+
+    .report-info {
+        flex: 1;
+    }
+
+    .report-title {
+        font-weight: 600;
+        color: var(--text);
+        margin-bottom: 3px;
+    }
+
+    .report-meta {
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+
+    .report-score {
+        font-size: 24px;
+        font-weight: bold;
+        margin-right: 15px;
+    }
+
+    .report-actions {
+        display: flex;
+        gap: 5px;
+    }
+
+    .btn-sm {
+        padding: 4px 10px;
+        font-size: 12px;
+    }
+
+    /* 导出对话框 */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 25px;
+        min-width: 350px;
+        max-width: 500px;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .modal-header h3 {
+        color: var(--text);
+        margin: 0;
+    }
+
+    .modal-close {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        font-size: 24px;
+        cursor: pointer;
+        padding: 0;
+        line-height: 1;
+    }
+
+    .modal-close:hover {
+        color: var(--text);
+    }
+
+    .export-options {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+    }
+
+    /* 按钮 */
+    .btn {
+        padding: 8px 16px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.2s ease;
+    }
+
+    .btn-primary {
+        background: var(--primary);
+        border-color: var(--primary);
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background: #1d4ed8;
+    }
+
+    .btn-secondary {
+        background: var(--bg-card);
+        color: var(--text);
+    }
+
+    .btn-secondary:hover {
+        background: var(--border);
+    }
+
+    .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* 区块 */
+    .section {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    .section h2 {
+        color: var(--primary);
+        margin-bottom: 15px;
+        font-size: 18px;
+    }
+
+    /* 表单输入框 */
+    .form-input {
+        width: 100%;
+        padding: 8px 12px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-size: 14px;
+        box-sizing: border-box;
+    }
+
+    .form-input:focus {
+        outline: none;
+        border-color: var(--primary);
+    }
+
+    .form-input::placeholder {
+        color: var(--text-muted);
+    }
+
+    /* 设备列表 */
+    .device-list {
+        max-height: 350px;
+        overflow-y: auto;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+    }
+
+    .device-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 15px;
+        border-bottom: 1px solid var(--border);
+        transition: background 0.2s ease;
+    }
+
+    .device-item:last-child {
+        border-bottom: none;
+    }
+
+    .device-item:hover {
+        background: rgba(37, 99, 235, 0.05);
+    }
+
+    .device-info {
+        flex: 1;
+    }
+
+    .device-name {
+        font-weight: 600;
+        color: var(--text);
+        margin-bottom: 3px;
+        font-size: 14px;
+    }
+
+    .device-meta {
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+
+    .device-vendor-tag {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-size: 11px;
+        font-weight: 600;
+        margin-left: 8px;
+    }
+
+    .vendor-cisco { background: rgba(0, 150, 214, 0.15); color: #0096d6; }
+    .vendor-huawei { background: rgba(207, 13, 32, 0.15); color: #cf0d20; }
+    .vendor-h3c { background: rgba(0, 128, 0, 0.15); color: #008000; }
+    .vendor-juniper { background: rgba(255, 153, 0, 0.15); color: #ff9900; }
+
+    .device-actions {
+        display: flex;
+        gap: 5px;
+    }
+
+    .btn-danger {
+        background: rgba(239, 68, 68, 0.15);
+        border-color: rgba(239, 68, 68, 0.3);
+        color: #ef4444;
+    }
+
+    .btn-danger:hover {
+        background: rgba(239, 68, 68, 0.25);
+    }
+
+    .btn-test {
+        background: rgba(34, 197, 94, 0.15);
+        border-color: rgba(34, 197, 94, 0.3);
+        color: #22c55e;
+    }
+
+    .btn-test:hover {
+        background: rgba(34, 197, 94, 0.25);
+    }
+
+    /* Toast 通知 */
+    .toast-container {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 9999;
+    }
+
+    .toast {
+        padding: 12px 20px;
+        border-radius: 6px;
+        margin-bottom: 8px;
+        font-size: 14px;
+        animation: toast-in 0.3s ease;
+        max-width: 400px;
+    }
+
+    .toast-success { background: #065f46; color: #a7f3d0; border: 1px solid #059669; }
+    .toast-error { background: #7f1d1d; color: #fca5a5; border: 1px solid #dc2626; }
+    .toast-info { background: #1e3a5f; color: #93c5fd; border: 1px solid #2563eb; }
+
+    @keyframes toast-in {
+        from { opacity: 0; transform: translateX(50px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let latestReportId = null;
+    let allChecks = [];
+    let networkDevices = [];
+
+    // ---- 初始化加载 ----
+    loadLatestReport();
+    loadReports();
+    loadDevices();
+
+    // ---- 检查类型切换 ----
+    function onCheckTypeChange() {
+        const type = document.getElementById('check-type').value;
+        const standardGroup = document.getElementById('standard-group');
+        const categoryGroup = document.getElementById('category-group');
+        const deviceSection = document.getElementById('device-section');
+
+        if (type === 'network') {
+            standardGroup.style.display = 'none';
+            categoryGroup.style.display = 'none';
+            deviceSection.style.display = 'block';
+        } else if (type === 'both') {
+            standardGroup.style.display = 'block';
+            categoryGroup.style.display = 'block';
+            deviceSection.style.display = 'block';
+        } else {
+            standardGroup.style.display = 'block';
+            categoryGroup.style.display = 'block';
+            deviceSection.style.display = 'none';
+        }
+    }
+
+    // 初始化时隐藏设备管理区域（默认本机检查）
+    document.getElementById('device-section').style.display = 'none';
+
+    // ---- 执行检查 ----
+    function runCheck() {
+        const checkType = document.getElementById('check-type').value;
+
+        if (checkType === 'network') {
+            runNetworkCheck();
+        } else if (checkType === 'both') {
+            runBothCheck();
+        } else {
+            runLocalCheck();
+        }
+    }
+
+    function runLocalCheck() {
+        const standard = document.getElementById('check-standard').value;
+        const category = document.getElementById('check-category').value;
+
+        const btn = document.getElementById('btn-run-check');
+        btn.disabled = true;
+        btn.textContent = '检查中...';
+        document.getElementById('check-progress').style.display = 'block';
+
+        const body = { standard: standard };
+        if (category) {
+            body.category = category;
+        }
+
+        fetch('/compliance/api/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        })
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(data => {
+            document.getElementById('check-progress').style.display = 'none';
+            btn.disabled = false;
+            btn.textContent = '开始检查';
+
+            if (data.status === 'ok') {
+                if (data.data.checks) {
+                    allChecks = data.data.checks;
+                    updateStats(data.data);
+                    renderChecks(allChecks);
+                    updateCategoryCards(allChecks);
+                } else {
+                    latestReportId = data.data.id;
+                    allChecks = data.data.checks || [];
+                    updateDashboard(data.data);
+                    renderChecks(allChecks);
+                    updateCategoryCards(allChecks);
+                    document.getElementById('btn-export').style.display = 'inline-block';
+                }
+                loadReports();
+            } else {
+                showToast('检查失败: ' + (data.message || '未知错误'), 'error');
+            }
+        })
+        .catch(e => {
+            document.getElementById('check-progress').style.display = 'none';
+            btn.disabled = false;
+            btn.textContent = '开始检查';
+            showToast('请求失败: ' + e.message, 'error');
+        });
+    }
+
+    function runNetworkCheck() {
+        if (networkDevices.length === 0) {
+            showToast('请先添加网络设备', 'error');
+            return;
+        }
+
+        const btn = document.getElementById('btn-run-check');
+        btn.disabled = true;
+        btn.textContent = '检查中...';
+        document.getElementById('check-progress').style.display = 'block';
+        document.getElementById('progress-status').textContent = '正在检查网络设备，请稍候...';
+
+        fetch('/compliance/api/run-network', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            document.getElementById('check-progress').style.display = 'none';
+            document.getElementById('progress-status').textContent = '检查中，请稍候...';
+            btn.disabled = false;
+            btn.textContent = '开始检查';
+
+            if (data.status === 'ok') {
+                allChecks = data.data.checks;
+                updateStats(data.data);
+                renderChecks(allChecks);
+                updateCategoryCards(allChecks);
+                showToast('网络设备检查完成: {}台设备, {}项检查'.format(data.data.devices_checked, data.data.total), 'success');
+            } else {
+                showToast('检查失败: ' + (data.message || '未知错误'), 'error');
+            }
+        })
+        .catch(e => {
+            document.getElementById('check-progress').style.display = 'none';
+            document.getElementById('progress-status').textContent = '检查中，请稍候...';
+            btn.disabled = false;
+            btn.textContent = '开始检查';
+            showToast('请求失败: ' + e.message, 'error');
+        });
+    }
+
+    function runBothCheck() {
+        if (networkDevices.length === 0) {
+            showToast('全面检查需要至少添加一台网络设备，请先添加设备', 'error');
+            return;
+        }
+
+        const standard = document.getElementById('check-standard').value;
+        const btn = document.getElementById('btn-run-check');
+        btn.disabled = true;
+        btn.textContent = '检查中...';
+        document.getElementById('check-progress').style.display = 'block';
+        document.getElementById('progress-status').textContent = '正在执行本机检查...';
+
+        // 先执行本机检查
+        fetch('/compliance/api/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ standard: standard }),
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(localData => {
+            if (localData.status !== 'ok') {
+                throw new Error(localData.message || '本机检查失败');
+            }
+
+            document.getElementById('progress-status').textContent = '正在检查网络设备...';
+
+            // 再执行网络设备检查
+            return fetch('/compliance/api/run-network', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            }).then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(netData => {
+                return { localData, netData };
+            });
+        })
+        .then(({ localData, netData }) => {
+            document.getElementById('check-progress').style.display = 'none';
+            document.getElementById('progress-status').textContent = '检查中，请稍候...';
+            btn.disabled = false;
+            btn.textContent = '开始检查';
+
+            // 合并结果
+            let localChecks = [];
+            if (localData.data.checks) {
+                localChecks = localData.data.checks;
+            } else if (localData.data.checks !== undefined) {
+                localChecks = localData.data.checks || [];
+                if (localData.data.id) latestReportId = localData.data.id;
+                updateDashboard(localData.data);
+                document.getElementById('btn-export').style.display = 'inline-block';
+            }
+
+            let netChecks = [];
+            if (netData.status === 'ok') {
+                netChecks = netData.data.checks || [];
+            }
+
+            allChecks = [...localChecks, ...netChecks];
+            const total = allChecks.length;
+            const passed = allChecks.filter(c => c.status === 'pass').length;
+            const failed = allChecks.filter(c => c.status === 'fail').length;
+            const warnings = allChecks.filter(c => c.status === 'warning').length;
+
+            updateStats({ total, passed, failed, warnings });
+            renderChecks(allChecks);
+            updateCategoryCards(allChecks);
+            loadReports();
+            showToast('全面检查完成: 本机+{}台网络设备, 共{}项检查'.format(
+                netData.data ? netData.data.devices_checked : 0, total
+            ), 'success');
+        })
+        .catch(e => {
+            document.getElementById('check-progress').style.display = 'none';
+            document.getElementById('progress-status').textContent = '检查中，请稍候...';
+            btn.disabled = false;
+            btn.textContent = '开始检查';
+            showToast('检查失败: ' + e.message, 'error');
+        });
+    }
+
+    // ---- 设备管理 ----
+    function addDevice() {
+        const alias = document.getElementById('dev-alias').value.trim();
+        const host = document.getElementById('dev-host').value.trim();
+        const port = parseInt(document.getElementById('dev-port').value) || 22;
+        const username = document.getElementById('dev-username').value.trim();
+        const password = document.getElementById('dev-password').value;
+        const vendor = document.getElementById('dev-vendor').value;
+
+        if (!host || !username || !password) {
+            showToast('请填写设备地址、用户名和密码', 'error');
+            return;
+        }
+
+        fetch('/compliance/api/devices', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ alias, host, port, username, password, vendor }),
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                showToast('设备添加成功: ' + data.data.alias, 'success');
+                // 清空表单
+                document.getElementById('dev-alias').value = '';
+                document.getElementById('dev-host').value = '';
+                document.getElementById('dev-username').value = '';
+                document.getElementById('dev-password').value = '';
+                document.getElementById('dev-port').value = '22';
+                loadDevices();
+            } else {
+                showToast('添加失败: ' + (data.message || '未知错误'), 'error');
+            }
+        })
+        .catch(e => showToast('请求失败: ' + e.message, 'error'));
+    }
+
+    function removeDevice(deviceId) {
+        if (!confirm('确定要删除该设备吗？')) return;
+
+        fetch('/compliance/api/devices/' + deviceId, {
+            method: 'DELETE',
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                showToast('设备已删除', 'success');
+                loadDevices();
+            } else {
+                showToast('删除失败: ' + (data.message || '未知错误'), 'error');
+            }
+        })
+        .catch(e => showToast('请求失败: ' + e.message, 'error'));
+    }
+
+    function testDevice() {
+        const host = document.getElementById('dev-host').value.trim();
+        const port = parseInt(document.getElementById('dev-port').value) || 22;
+        const username = document.getElementById('dev-username').value.trim();
+        const password = document.getElementById('dev-password').value;
+        const vendor = document.getElementById('dev-vendor').value;
+
+        if (!host || !username || !password) {
+            showToast('请填写设备地址、用户名和密码', 'error');
+            return;
+        }
+
+        showToast('正在测试连接...', 'info');
+
+        fetch('/compliance/api/devices/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ host, port, username, password, vendor }),
+        })
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(data => {
+            if (data.status === 'ok') {
+                if (data.data.success) {
+                    showToast('连接成功: ' + data.data.message, 'success');
+                } else {
+                    showToast('连接失败: ' + data.data.message, 'error');
+                }
+            } else {
+                showToast('测试失败: ' + (data.message || '未知错误'), 'error');
+            }
+        })
+        .catch(e => showToast('请求失败: ' + e.message, 'error'));
+    }
+
+    function loadDevices() {
+        fetch('/compliance/api/devices')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok') {
+                    networkDevices = data.data;
+                    renderDeviceList();
+                }
+            });
+    }
+
+    function renderDeviceList() {
+        const container = document.getElementById('device-list');
+        const countEl = document.getElementById('device-count');
+        countEl.textContent = networkDevices.length;
+
+        if (networkDevices.length === 0) {
+            container.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">暂未添加网络设备</p>';
+            return;
+        }
+
+        const vendorNames = {
+            cisco: 'Cisco', huawei: '华为', h3c: 'H3C', juniper: 'Juniper'
+        };
+
+        container.innerHTML = networkDevices.map(d => `
+            <div class="device-item">
+                <div class="device-info">
+                    <div class="device-name">
+                        ${escapeHtml(d.alias)}
+                        <span class="device-vendor-tag vendor-${d.vendor}">${vendorNames[d.vendor] || d.vendor}</span>
+                    </div>
+                    <div class="device-meta">
+                        ${escapeHtml(d.host)}:${d.port} | 用户: ${escapeHtml(d.username)} | 密码: ******
+                    </div>
+                </div>
+                <div class="device-actions">
+                    <button class="btn btn-sm btn-danger" onclick="removeDevice('${d.id}')">删除</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // ---- Toast 通知 ----
+    function showToast(message, type) {
+        type = type || 'info';
+        const container = document.querySelector('.toast-container');
+        if (!container) {
+            const div = document.createElement('div');
+            div.className = 'toast-container';
+            div.id = 'toast-container';
+            document.body.appendChild(div);
+        }
+        const toastContainer = document.getElementById('toast-container') || document.querySelector('.toast-container');
+        const toast = document.createElement('div');
+        toast.className = 'toast toast-' + type;
+        toast.textContent = message;
+        toastContainer.appendChild(toast);
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transition = 'opacity 0.3s ease';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    // ---- 更新仪表盘 ----
+    function updateDashboard(report) {
+        // 分数
+        const scoreEl = document.getElementById('score-number');
+        const circleEl = document.getElementById('score-circle');
+        const statusEl = document.getElementById('score-status');
+
+        animateScore(scoreEl, report.score);
+        circleEl.className = 'score-circle ' + getScoreClass(report.score);
+
+        if (report.score > 80) {
+            statusEl.textContent = '合规状态良好';
+            statusEl.style.color = '#22c55e';
+        } else if (report.score > 60) {
+            statusEl.textContent = '合规状态一般，需改进';
+            statusEl.style.color = '#eab308';
+        } else if (report.score > 40) {
+            statusEl.textContent = '合规状态较差，需立即整改';
+            statusEl.style.color = '#f97316';
+        } else {
+            statusEl.textContent = '合规状态严重不足';
+            statusEl.style.color = '#ef4444';
+        }
+
+        // 统计
+        document.getElementById('stat-total').textContent = report.total_checks;
+        document.getElementById('stat-passed').textContent = report.passed;
+        document.getElementById('stat-failed').textContent = report.failed;
+        document.getElementById('stat-warnings').textContent = report.warnings;
+    }
+
+    function updateStats(data) {
+        document.getElementById('stat-total').textContent = data.total;
+        document.getElementById('stat-passed').textContent = data.passed;
+        document.getElementById('stat-failed').textContent = data.failed;
+        document.getElementById('stat-warnings').textContent = data.warnings;
+    }
+
+    // ---- 分数动画 ----
+    function animateScore(el, target) {
+        let current = 0;
+        const step = Math.max(1, Math.floor(target / 30));
+        const interval = setInterval(() => {
+            current += step;
+            if (current >= target) {
+                current = target;
+                clearInterval(interval);
+            }
+            el.textContent = current;
+        }, 20);
+    }
+
+    function getScoreClass(score) {
+        if (score > 80) return 'score-green';
+        if (score > 60) return 'score-yellow';
+        if (score > 40) return 'score-orange';
+        return 'score-red';
+    }
+
+    // ---- 分类卡片更新 ----
+    function updateCategoryCards(checks) {
+        const categories = ['系统安全', '网络安全', '用户管理', '日志审计', '数据保护', '服务安全'];
+        categories.forEach(cat => {
+            const catChecks = checks.filter(c => c.category === cat);
+            const passed = catChecks.filter(c => c.status === 'pass').length;
+            const failed = catChecks.filter(c => c.status === 'fail').length;
+            const warned = catChecks.filter(c => c.status === 'warning').length;
+
+            const passEl = document.getElementById('cat-pass-' + cat);
+            const failEl = document.getElementById('cat-fail-' + cat);
+            const warnEl = document.getElementById('cat-warn-' + cat);
+
+            if (passEl) passEl.textContent = passed;
+            if (failEl) failEl.textContent = failed;
+            if (warnEl) warnEl.textContent = warned;
+        });
+    }
+
+    // ---- 渲染检查项表格 ----
+    function renderChecks(checks) {
+        const tbody = document.getElementById('checks-tbody');
+        if (!checks || checks.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 40px;">暂无检查结果</td></tr>';
+            return;
+        }
+
+        const severityMap = {
+            'critical': '严重', 'high': '高危', 'medium': '中危', 'low': '低危', 'info': '信息'
+        };
+        const statusMap = {
+            'pass': '通过', 'fail': '失败', 'warning': '警告', 'not_checked': '未检查'
+        };
+
+        tbody.innerHTML = checks.map(c => `
+            <tr>
+                <td><strong>${c.category}</strong></td>
+                <td>${c.name}</td>
+                <td class="detail-cell" title="${escapeHtml(c.description)}">${c.description}</td>
+                <td class="sev-${c.severity}">${severityMap[c.severity] || c.severity}</td>
+                <td><span class="status-${c.status}">${statusMap[c.status] || c.status}</span></td>
+                <td class="detail-cell" title="${escapeHtml(c.result_detail)}">${c.result_detail || '-'}</td>
+                <td class="detail-cell" title="${escapeHtml(c.remediation)}">${c.remediation || '-'}</td>
+            </tr>
+        `).join('');
+    }
+
+    // ---- 加载检查结果（带筛选） ----
+    function loadChecks() {
+        const category = document.getElementById('filter-category').value;
+        const status = document.getElementById('filter-status').value;
+
+        let filtered = allChecks.slice();
+        if (category) {
+            filtered = filtered.filter(c => c.category === category);
+        }
+        if (status) {
+            filtered = filtered.filter(c => c.status === status);
+        }
+        renderChecks(filtered);
+    }
+
+    function filterByCategory(category) {
+        document.getElementById('filter-category').value = category;
+        document.getElementById('filter-status').value = '';
+        loadChecks();
+        // 滚动到检查项详情
+        document.querySelector('.section-header').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function clearFilters() {
+        document.getElementById('filter-category').value = '';
+        document.getElementById('filter-status').value = '';
+        loadChecks();
+    }
+
+    // ---- 加载最新报告 ----
+    function loadLatestReport() {
+        fetch('/compliance/api/score')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                if (data.status === 'ok' && data.data.latest_report) {
+                    const report = data.data.latest_report;
+                    latestReportId = report.id;
+                    allChecks = report.checks || [];
+                    updateDashboard(report);
+                    updateCategoryCards(allChecks);
+                    renderChecks(allChecks);
+                    document.getElementById('btn-export').style.display = 'inline-block';
+                }
+            });
+    }
+
+    // ---- 加载历史报告 ----
+    function loadReports() {
+        fetch('/compliance/api/reports')
+            .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(data => {
+                const container = document.getElementById('reports-list');
+                if (data.status === 'ok' && data.data.length > 0) {
+                    container.innerHTML = data.data.map(r => {
+                        const scoreColor = getScoreColor(r.score);
+                        const time = r.created_at ? new Date(r.created_at).toLocaleString() : '-';
+                        return `
+                            <div class="report-item">
+                                <div class="report-info">
+                                    <div class="report-title">${r.title}</div>
+                                    <div class="report-meta">${r.standard_name} | ${time} | 通过: ${r.passed} / 失败: ${r.failed} / 警告: ${r.warnings}</div>
+                                </div>
+                                <div class="report-score" style="color: ${scoreColor};">${r.score}</div>
+                                <div class="report-actions">
+                                    <button class="btn btn-sm btn-secondary" onclick="exportById('${r.id}', 'json')">JSON</button>
+                                    <button class="btn btn-sm btn-secondary" onclick="exportById('${r.id}', 'csv')">CSV</button>
+                                    <button class="btn btn-sm btn-secondary" onclick="exportById('${r.id}', 'html')">HTML</button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    container.innerHTML = '<p style="color: var(--text-muted);">暂无历史报告</p>';
+                }
+            });
+    }
+
+    // ---- 导出功能 ----
+    function showExportDialog() {
+        if (!latestReportId) {
+            alert('暂无可导出的报告');
+            return;
+        }
+        document.getElementById('export-modal').style.display = 'flex';
+    }
+
+    function closeExportDialog() {
+        document.getElementById('export-modal').style.display = 'none';
+    }
+
+    function exportReport(format) {
+        if (!latestReportId) return;
+        closeExportDialog();
+        window.location.href = '/compliance/api/export/' + latestReportId + '?format=' + format;
+    }
+
+    function exportById(reportId, format) {
+        window.location.href = '/compliance/api/export/' + reportId + '?format=' + format;
+    }
+
+    // ---- 辅助函数 ----
+    function getScoreColor(score) {
+        if (score > 80) return '#22c55e';
+        if (score > 60) return '#eab308';
+        if (score > 40) return '#f97316';
+        return '#ef4444';
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // 点击模态框外部关闭
+    document.getElementById('export-modal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeExportDialog();
+        }
+    });
+</script>
+{% endblock %}
