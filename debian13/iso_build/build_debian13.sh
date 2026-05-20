@@ -51,7 +51,8 @@ apt-get install -y -qq \
     wget \
     rsync \
     p7zip-full \
-    genisoimage 2>/dev/null || true
+    genisoimage \
+    dpkg-dev 2>/dev/null || true
 
 log_info "构建工具安装完成"
 
@@ -140,15 +141,85 @@ mv gatekeeper.tar.gz "${EXTRACT_DIR}/"
 log_info "安装包准备完成"
 
 # ============================================================
-# 5. 跳过pip wheels（在线安装模式，安装时从网络下载）
+# 5. 下载并集成固件包（non-free-firmware）
 # ============================================================
-log_step "[5/7] 跳过pip wheels下载（在线安装模式）..."
-log_info "安装时将通过网络下载Python依赖"
+log_step "[5/8] 下载固件包（离线安装用）..."
+
+FIRMWARE_DIR="${BUILD_DIR}/firmware-debs"
+mkdir -p "${FIRMWARE_DIR}"
+
+# Debian 13 固件包（non-free-firmware 组件）
+FIRMWARE_PACKAGES=(
+    "firmware-linux-nonfree-firmware"
+    "firmware-iwlwifi"
+    "firmware-atheros"
+    "firmware-realtek"
+    "firmware-bnx2"
+    "firmware-libertas"
+    "firmware-misc-nonfree"
+)
+
+# 下载固件包
+for pkg in "${FIRMWARE_PACKAGES[@]}"; do
+    log_info "下载固件包: ${pkg}"
+    apt-get download -o Dir::Cache::archives="${FIRMWARE_DIR}" "${pkg}" 2>/dev/null || true
+done
+
+# 将固件包集成到ISO的pool目录
+if [ "$(ls -A ${FIRMWARE_DIR}/*.deb 2>/dev/null)" ]; then
+    log_info "将固件包集成到ISO..."
+    mkdir -p "${EXTRACT_DIR}/pool/non-free-firmware/f/firmware-nonfree"
+    cp "${FIRMWARE_DIR}"/*.deb "${EXTRACT_DIR}/pool/non-free-firmware/f/firmware-nonfree/" 2>/dev/null || true
+    
+    # 重新生成Packages索引
+    if command -v dpkg-scanpackages &> /dev/null; then
+        mkdir -p "${EXTRACT_DIR}/dists/trixie/non-free-firmware/binary-amd64"
+        cd "${EXTRACT_DIR}"
+        dpkg-scanpackages --arch amd64 pool/non-free-firmware /dev/null > dists/trixie/non-free-firmware/binary-amd64/Packages 2>/dev/null || true
+        gzip -9 -c dists/trixie/non-free-firmware/binary-amd64/Packages > dists/trixie/non-free-firmware/binary-amd64/Packages.gz 2>/dev/null || true
+        
+        # 创建non-free-firmware的Release文件
+        cat > dists/trixie/non-free-firmware/binary-amd64/Release << EOF
+Archive: trixie
+Component: non-free-firmware
+Origin: Debian
+Label: Debian
+Architecture: amd64
+EOF
+        
+        # 更新主Release文件，添加non-free-firmware组件
+        if [ -f "dists/trixie/Release" ]; then
+            # 更新Components行
+            sed -i 's/Components: main contrib/Components: main contrib non-free-firmware/' dists/trixie/Release 2>/dev/null || true
+            
+            # 添加non-free-firmware的checksums
+            for f in non-free-firmware/binary-amd64/Packages non-free-firmware/binary-amd64/Packages.gz non-free-firmware/binary-amd64/Release; do
+                if [ -f "dists/trixie/${f}" ]; then
+                    size=$(stat -c%s "dists/trixie/${f}")
+                    md5=$(md5sum "dists/trixie/${f}" | cut -d' ' -f1)
+                    sha1=$(sha1sum "dists/trixie/${f}" | cut -d' ' -f1)
+                    sha256=$(sha256sum "dists/trixie/${f}" | cut -d' ' -f1)
+                    
+                    # 添加checksums到Release文件
+                    sed -i "/^MD5Sum:/a ${md5} ${size} ${f}" dists/trixie/Release 2>/dev/null || true
+                    sed -i "/^SHA1:/a ${sha1} ${size} ${f}" dists/trixie/Release 2>/dev/null || true
+                    sed -i "/^SHA256:/a ${sha256} ${size} ${f}" dists/trixie/Release 2>/dev/null || true
+                fi
+            done
+        fi
+        
+        log_info "固件包集成完成"
+    else
+        log_warn "未找到dpkg-scanpackages，跳过Packages索引生成"
+    fi
+else
+    log_warn "未下载到固件包，ISO将不包含额外固件"
+fi
 
 # ============================================================
 # 6. 集成preseed自动化配置
 # ============================================================
-log_step "[6/7] 集成preseed自动化配置..."
+log_step "[6/8] 集成preseed自动化配置..."
 
 # 从SCRIPT_DIR复制preseed.cfg和late-command.sh
 cp "${SCRIPT_DIR}/preseed.cfg" "${EXTRACT_DIR}/preseed.cfg"
@@ -194,7 +265,7 @@ fi
 # ============================================================
 # 7. 重新生成ISO
 # ============================================================
-log_step "[7/7] 生成GateKeeper ISO..."
+log_step "[7/8] 生成GateKeeper ISO..."
 OUTPUT_ISO="${PROJECT_DIR}/${ISO_NAME}"
 
 cd "${EXTRACT_DIR}"
@@ -251,7 +322,7 @@ fi
 # ============================================================
 # 8. 打印ISO信息（不删除BUILD_DIR，保留用于调试）
 # ============================================================
-log_step "[7/7] 构建完成，输出ISO信息..."
+log_step "[8/8] 构建完成，输出ISO信息..."
 
 echo ""
 echo "============================================"
