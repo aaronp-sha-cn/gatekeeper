@@ -25,14 +25,14 @@ log_step()  { echo -e "${BLUE}[STEP]${NC} $1"; }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_DIR="${SCRIPT_DIR}/build"
-ISO_NAME="GateKeeper-v1.3.0-Full-debian13-amd64.iso"
+ISO_NAME="GateKeeper-v1.3.0-debian13-amd64.iso"
 
 # Debian 13 (Trixie) ISO镜像源列表（按优先级排序）
 DEBIAN_MIRRORS=(
-    "https://cdimage.debian.org/cdimage/archive/13.4.0/amd64/iso-cd/debian-13.4.0-amd64-netinst.iso"
-    "https://mirrors.tuna.tsinghua.edu.cn/debian-cd/current/amd64/iso-cd/debian-13.4.0-amd64-netinst.iso"
-    "https://mirrors.ustc.edu.cn/debian-cd/current/amd64/iso-cd/debian-13.4.0-amd64-netinst.iso"
-    "https://mirrors.aliyun.com/debian-cd/current/amd64/iso-cd/debian-13.4.0-amd64-netinst.iso"
+    "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.5.0-amd64-netinst.iso"
+    "https://mirrors.tuna.tsinghua.edu.cn/debian-cd/current/amd64/iso-cd/debian-13.5.0-amd64-netinst.iso"
+    "https://mirrors.ustc.edu.cn/debian-cd/current/amd64/iso-cd/debian-13.5.0-amd64-netinst.iso"
+    "https://mirrors.aliyun.com/debian-cd/current/amd64/iso-cd/debian-13.5.0-amd64-netinst.iso"
 )
 
 # ============================================================
@@ -315,6 +315,21 @@ OUTPUT_ISO="${PROJECT_DIR}/${ISO_NAME}"
 
 cd "${EXTRACT_DIR}"
 
+# 验证isolinux.bin完整性
+if [ -f "isolinux/isolinux.bin" ]; then
+    log_info "验证isolinux.bin完整性..."
+    # 检查文件大小
+    ISOLINUX_SIZE=$(stat -c%s "isolinux/isolinux.bin")
+    if [ "${ISOLINUX_SIZE}" -lt 10000 ]; then
+        log_warn "isolinux.bin文件过小，可能损坏"
+    else
+        log_info "isolinux.bin大小: ${ISOLINUX_SIZE} bytes"
+    fi
+else
+    log_error "isolinux.bin不存在!"
+    exit 1
+fi
+
 # 检查efi.img是否存在，决定是否添加EFI启动参数
 EFI_PARAMS=""
 if [ -f "${EXTRACT_DIR}/boot/grub/efi.img" ]; then
@@ -324,12 +339,47 @@ else
     log_warn "未检测到EFI引导镜像，将仅生成BIOS启动ISO"
 fi
 
-if command -v genisoimage &> /dev/null; then
-    # 使用genisoimage（不使用 || true，让错误可见）
+# 优先使用xorriso（更可靠）
+if command -v xorriso &> /dev/null; then
+    log_info "使用xorriso生成ISO..."
+    # xorriso -as mkisofs 的标准用法
+    xorriso \
+        -as mkisofs \
+        -r \
+        -V "GATEKEEPER" \
+        -o "${OUTPUT_ISO}" \
+        -J \
+        -joliet-long \
+        -b isolinux/isolinux.bin \
+        -c isolinux/boot.cat \
+        -no-emul-boot \
+        -boot-load-size 4 \
+        -boot-info-table \
+        ${EFI_PARAMS} \
+        -isohybrid-gpt-basdat \
+        "${EXTRACT_DIR}"
+    
+    if [ $? -eq 0 ]; then
+        log_info "ISO生成完成 (使用xorriso)"
+    else
+        log_error "xorriso生成ISO失败"
+        exit 1
+    fi
+elif command -v genisoimage &> /dev/null; then
+    log_info "使用genisoimage生成ISO..."
+    # 确保boot.cat存在
+    if [ ! -f "isolinux/boot.cat" ]; then
+        log_info "创建boot.cat..."
+        cat > "isolinux/boot.cat" << EOF
+Boot catalogue
+EOF
+    fi
+    
     genisoimage \
         -r -V "GATEKEEPER" \
         -o "${OUTPUT_ISO}" \
-        -J -joliet-long \
+        -J \
+        -joliet-long \
         -b isolinux/isolinux.bin \
         -c isolinux/boot.cat \
         -no-emul-boot \
@@ -337,22 +387,16 @@ if command -v genisoimage &> /dev/null; then
         -boot-info-table \
         ${EFI_PARAMS} \
         .
-    log_info "ISO生成完成 (使用genisoimage)"
+    
+    if [ $? -eq 0 ]; then
+        log_info "ISO生成完成 (使用genisoimage)"
+    else
+        log_error "genisoimage生成ISO失败"
+        exit 1
+    fi
 else
-    # 使用xorriso（不使用 || true，让错误可见）
-    xorriso -as mkisofs \
-        -r \
-        -V "GATEKEEPER" \
-        -o "${OUTPUT_ISO}" \
-        -J -joliet-long \
-        -b isolinux/isolinux.bin \
-        -c isolinux/boot.cat \
-        -no-emul-boot \
-        -boot-load-size 4 \
-        -boot-info-table \
-        ${EFI_PARAMS} \
-        "${EXTRACT_DIR}"
-    log_info "ISO生成完成 (使用xorriso)"
+    log_error "未找到ISO生成工具 (xorriso或genisoimage)"
+    exit 1
 fi
 
 # 如果isohybrid可用，对ISO进行混合处理（支持USB启动）
