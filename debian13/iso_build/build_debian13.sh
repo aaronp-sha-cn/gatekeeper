@@ -187,25 +187,70 @@ Label: Debian
 Architecture: amd64
 EOF
         
-        # 更新主Release文件，添加non-free-firmware组件
+        # 更新主Release文件，添加non-free-firmware组件并重新计算所有checksums
         if [ -f "dists/trixie/Release" ]; then
-            # 更新Components行
-            sed -i 's/Components: main contrib/Components: main contrib non-free-firmware/' dists/trixie/Release 2>/dev/null || true
+            log_info "重新计算所有Packages文件的checksums..."
             
-            # 添加non-free-firmware的checksums
-            for f in non-free-firmware/binary-amd64/Packages non-free-firmware/binary-amd64/Packages.gz non-free-firmware/binary-amd64/Release; do
-                if [ -f "dists/trixie/${f}" ]; then
-                    size=$(stat -c%s "dists/trixie/${f}")
-                    md5=$(md5sum "dists/trixie/${f}" | cut -d' ' -f1)
-                    sha1=$(sha1sum "dists/trixie/${f}" | cut -d' ' -f1)
-                    sha256=$(sha256sum "dists/trixie/${f}" | cut -d' ' -f1)
-                    
-                    # 添加checksums到Release文件
-                    sed -i "/^MD5Sum:/a ${md5} ${size} ${f}" dists/trixie/Release 2>/dev/null || true
-                    sed -i "/^SHA1:/a ${sha1} ${size} ${f}" dists/trixie/Release 2>/dev/null || true
-                    sed -i "/^SHA256:/a ${sha256} ${size} ${f}" dists/trixie/Release 2>/dev/null || true
-                fi
-            done
+            # 备份原Release文件的头部信息
+            ORIGIN=$(grep "^Origin:" dists/trixie/Release | head -1)
+            LABEL=$(grep "^Label:" dists/trixie/Release | head -1)
+            SUITE=$(grep "^Suite:" dists/trixie/Release | head -1)
+            VERSION=$(grep "^Version:" dists/trixie/Release | head -1)
+            CODENAME=$(grep "^Codename:" dists/trixie/Release | head -1)
+            ARCHITECTURES=$(grep "^Architectures:" dists/trixie/Release | head -1)
+            
+            # 创建新的Release文件
+            cat > dists/trixie/Release.new << EOF
+${ORIGIN}
+${LABEL}
+${SUITE}
+${VERSION}
+${CODENAME}
+${ARCHITECTURES}
+Components: main contrib non-free-firmware
+Description: Debian Trixie - Official Snapshot amd64 20250426T000000Z
+Date: $(date -u +"%a, %d %b %Y %H:%M:%S UTC")
+
+EOF
+            
+            # 计算所有文件的checksums
+            {
+                echo "MD5Sum:"
+                for component in main contrib non-free-firmware; do
+                    for f in "${component}/binary-amd64/Packages" "${component}/binary-amd64/Packages.gz" "${component}/binary-amd64/Release"; do
+                        if [ -f "dists/trixie/${f}" ]; then
+                            size=$(stat -c%s "dists/trixie/${f}")
+                            md5=$(md5sum "dists/trixie/${f}" | cut -d' ' -f1)
+                            echo " ${md5} ${size} ${f}"
+                        fi
+                    done
+                done
+                
+                echo "SHA1:"
+                for component in main contrib non-free-firmware; do
+                    for f in "${component}/binary-amd64/Packages" "${component}/binary-amd64/Packages.gz" "${component}/binary-amd64/Release"; do
+                        if [ -f "dists/trixie/${f}" ]; then
+                            size=$(stat -c%s "dists/trixie/${f}")
+                            sha1=$(sha1sum "dists/trixie/${f}" | cut -d' ' -f1)
+                            echo " ${sha1} ${size} ${f}"
+                        fi
+                    done
+                done
+                
+                echo "SHA256:"
+                for component in main contrib non-free-firmware; do
+                    for f in "${component}/binary-amd64/Packages" "${component}/binary-amd64/Packages.gz" "${component}/binary-amd64/Release"; do
+                        if [ -f "dists/trixie/${f}" ]; then
+                            size=$(stat -c%s "dists/trixie/${f}")
+                            sha256=$(sha256sum "dists/trixie/${f}" | cut -d' ' -f1)
+                            echo " ${sha256} ${size} ${f}"
+                        fi
+                    done
+                done
+            } >> dists/trixie/Release.new
+            
+            mv dists/trixie/Release.new dists/trixie/Release
+            log_info "Release文件checksums更新完成"
         fi
         
         log_info "固件包集成完成"
