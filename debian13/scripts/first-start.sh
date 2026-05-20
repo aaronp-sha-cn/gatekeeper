@@ -115,7 +115,7 @@ chmod +x /opt/gatekeeper/scripts/junos-cli-wrapper.sh
 
 grep -q "junos-cli-wrapper" /etc/shells 2>/dev/null || echo "/opt/gatekeeper/scripts/junos-cli-wrapper.sh" >> /etc/shells
 
-chsh -s /opt/gatekeeper/scripts/junos-cli-wrapper.sh admin 2>/dev/null || true
+chsh -s /opt/gatekeeper/scripts/junos-cli-wrapper.sh gkadmin 2>/dev/null || true
 
 ln -sf /opt/gatekeeper/scripts/junos-cli-wrapper.sh /usr/local/bin/gatekeeper-cli 2>/dev/null || true
 chmod +x /usr/local/bin/gatekeeper-cli 2>/dev/null || true

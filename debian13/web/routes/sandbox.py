@@ -9,7 +9,8 @@ import uuid
 from flask import Blueprint, jsonify, request, render_template
 from flask_login import current_user
 
-from web.routes.auth import login_required, admin_required
+from flask_login import login_required
+from web.routes.auth import admin_required
 
 from config.logging_config import get_logger
 from core.audit import log_web_action

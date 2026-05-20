@@ -10,7 +10,8 @@ import threading
 from flask import Blueprint, jsonify, request, render_template
 
 from config.logging_config import get_logger
-from web.routes.auth import login_required, super_admin_required
+from flask_login import login_required
+from web.routes.auth import super_admin_required
 from web.app import _safe_error_message
 
 logger = get_logger("rule_update_route")
