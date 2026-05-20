@@ -25,7 +25,7 @@ log_step()  { echo -e "${BLUE}[STEP]${NC} $1"; }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_DIR="${SCRIPT_DIR}/build"
-ISO_NAME="GateKeeper-v1.3.0-debian13-amd64.iso"
+ISO_NAME="GateKeeper-v1.4.0-debian13-amd64.iso"
 
 # Debian 13 (Trixie) ISO镜像源列表（按优先级排序）
 DEBIAN_MIRRORS=(
@@ -213,11 +213,19 @@ Date: $(date -u +"%a, %d %b %Y %H:%M:%S UTC")
 
 EOF
             
-            # 计算所有文件的checksums
+            # 计算所有文件的checksums（包括debian-installer）
             {
                 echo "MD5Sum:"
                 for component in main contrib non-free-firmware; do
                     for f in "${component}/binary-amd64/Packages" "${component}/binary-amd64/Packages.gz" "${component}/binary-amd64/Release"; do
+                        if [ -f "dists/trixie/${f}" ]; then
+                            size=$(stat -c%s "dists/trixie/${f}")
+                            md5=$(md5sum "dists/trixie/${f}" | cut -d' ' -f1)
+                            echo " ${md5} ${size} ${f}"
+                        fi
+                    done
+                    # debian-installer组件
+                    for f in "${component}/debian-installer/binary-amd64/Packages" "${component}/debian-installer/binary-amd64/Packages.gz"; do
                         if [ -f "dists/trixie/${f}" ]; then
                             size=$(stat -c%s "dists/trixie/${f}")
                             md5=$(md5sum "dists/trixie/${f}" | cut -d' ' -f1)
@@ -235,11 +243,27 @@ EOF
                             echo " ${sha1} ${size} ${f}"
                         fi
                     done
+                    # debian-installer组件
+                    for f in "${component}/debian-installer/binary-amd64/Packages" "${component}/debian-installer/binary-amd64/Packages.gz"; do
+                        if [ -f "dists/trixie/${f}" ]; then
+                            size=$(stat -c%s "dists/trixie/${f}")
+                            sha1=$(sha1sum "dists/trixie/${f}" | cut -d' ' -f1)
+                            echo " ${sha1} ${size} ${f}"
+                        fi
+                    done
                 done
                 
                 echo "SHA256:"
                 for component in main contrib non-free-firmware; do
                     for f in "${component}/binary-amd64/Packages" "${component}/binary-amd64/Packages.gz" "${component}/binary-amd64/Release"; do
+                        if [ -f "dists/trixie/${f}" ]; then
+                            size=$(stat -c%s "dists/trixie/${f}")
+                            sha256=$(sha256sum "dists/trixie/${f}" | cut -d' ' -f1)
+                            echo " ${sha256} ${size} ${f}"
+                        fi
+                    done
+                    # debian-installer组件
+                    for f in "${component}/debian-installer/binary-amd64/Packages" "${component}/debian-installer/binary-amd64/Packages.gz"; do
                         if [ -f "dists/trixie/${f}" ]; then
                             size=$(stat -c%s "dists/trixie/${f}")
                             sha256=$(sha256sum "dists/trixie/${f}" | cut -d' ' -f1)

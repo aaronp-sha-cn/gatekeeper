@@ -307,7 +307,7 @@ cat > /target/etc/motd << 'MOTD_EOF'
 #     # #    #   #   #      #   #  #      #      #      #      #   #
  #####  #    #   #   ###### #    # ###### ###### #      ###### #    #
 
-  GateKeeper - AI Security Network Defense System v1.3.0
+  GateKeeper - AI Security Network Defense System v1.4.0
 
   Web Interface: https://<IP>:8443
   Documentation: /opt/gatekeeper/docs/

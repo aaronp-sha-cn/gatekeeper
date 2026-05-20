@@ -12,7 +12,7 @@ from datetime import datetime
 
 # Configuration
 EXTRACT_DIR = "/workspace/gatekeeper/debian13/iso_build/build/extract"
-OUTPUT_ISO = "/workspace/gatekeeper/debian13/GateKeeper-v1.3.0-debian13-amd64.iso"
+OUTPUT_ISO = "/workspace/gatekeeper/debian13/GateKeeper-v1.4.0-debian13-amd64.iso"
 
 def build_iso():
     print(f"Building ISO from: {EXTRACT_DIR}")
